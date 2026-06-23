@@ -15,7 +15,7 @@ set -euo pipefail
 IFS=$'\n\t'
 
 # ── Globale Variablen ──────────────────────────────────────────────────────────
-SCRIPT_VERSION="1.3.0"
+SCRIPT_VERSION="1.4.0"
 SCRIPT_NAME="arch-shield"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PYTHON_BIN=""
@@ -2032,6 +2032,434 @@ update_threat_intel() {
 }
 
 #==================================================================================
+#  MODUL 8: ADVANCED PROTECTION (deepseek-v4-pro Empfehlungen)
+#==================================================================================
+#  4 Erweiterungen: Daily Threat-Intel Timer, C2-Netzwerkblockierung,
+#  auditd File-Integrity-Monitoring, rkhunter Rootkit-Detection
+
+# ── 8a: Daily Threat-Intel Timer ──────────────────────────────────────────────
+install_daily_timer() {
+    echo -e "\n${BOLD}[1/4] Täglicher Threat-Intel Update Timer${NC}"
+
+    local service_dir="$HOME/.config/systemd/user"
+    local script_dir="$HOME/.local/share/arch-shield"
+    local daily_script="$script_dir/daily-update.sh"
+    local daily_service="$service_dir/aur-shield-daily-update.service"
+    local daily_timer="$service_dir/aur-shield-daily-update.timer"
+
+    [[ "$DRY_RUN" == "true" ]] && {
+        echo -e "  ${DIM}[DRY-RUN] Würde erstellen: daily-update timer${NC}"
+        return 0
+    }
+
+    mkdir -p "$service_dir" "$script_dir"
+
+    # Daily Update Script — lädt IOC-Listen + scannt
+    cat > "$daily_script" << 'DAILYSCRIPT'
+#!/bin/bash
+set -euo pipefail
+LOGFILE="$HOME/.local/share/arch-shield/daily-update.log"
+DATE=$(date '+%Y-%m-%d %H:%M:%S')
+echo "[$DATE] Daily Threat-Intel Update" >> "$LOGFILE"
+
+# 1. aur-malware-check git pull (neueste IOC-Listen)
+MALWARE_CHECK_DIR="/tmp/arch-shield-aur-malware-check"
+if [[ -d "$MALWARE_CHECK_DIR/.git" ]]; then
+    cd "$MALWARE_CHECK_DIR"
+    git pull --quiet 2>/dev/null && echo "  IOC-Datenbank aktualisiert" >> "$LOGFILE"
+elif command -v git &>/dev/null; then
+    MALWARE_CHECK_DIR=$(mktemp -d -t arch-shield-aur-malware-check.XXXXXX 2>/dev/null || {
+        MALWARE_CHECK_DIR="$HOME/.local/share/arch-shield/aur-malware-check"
+        mkdir -p "$MALWARE_CHECK_DIR"
+    })
+    git clone --depth 1 --quiet "https://github.com/lenucksi/aur-malware-check.git" "$MALWARE_CHECK_DIR" 2>/dev/null \
+        && echo "  aur-malware-check installiert" >> "$LOGFILE" \
+        || echo "  FEHLER: aur-malware-check konnte nicht installiert werden" >> "$LOGFILE"
+fi
+
+# 2. HedgeDoc Live-Liste
+if [[ -d "$MALWARE_CHECK_DIR/aur_check" ]] && command -v python3 &>/dev/null; then
+    cd "$MALWARE_CHECK_DIR"
+    python3 -m aur_check --refresh --full >> "$LOGFILE" 2>&1 \
+        && echo "  HedgeDoc aktualisiert" >> "$LOGFILE" \
+        || echo "  HedgeDoc-Update fehlgeschlagen" >> "$LOGFILE"
+fi
+
+# 3. Schneller Scan (nur installierte Pakete gegen IOC-Liste)
+if [[ -d "$MALWARE_CHECK_DIR/aur_check" ]] && command -v python3 &>/dev/null; then
+    cd "$MALWARE_CHECK_DIR"
+    python3 -m aur_check --all-time >> "$LOGFILE" 2>&1 || echo "  aur_check: Warnung/Funde" >> "$LOGFILE"
+fi
+
+# 4. eBPF Rootkit-Check
+ls /sys/fs/bpf/hidden_* >> "$LOGFILE" 2>&1 \
+    && echo "  ⚠ eBPF-ROOTKIT-SPUR GEFUNDEN!" >> "$LOGFILE" \
+    || echo "  eBPF: clean" >> "$LOGFILE"
+
+# 5. C2-Domain-Blocklist aktualisieren
+BLOCKLIST_FILE="/etc/hosts.d/arch-shield-c2-blocklist"
+if command -v curl &>/dev/null; then
+    # Bekannte C2-Domains der Atomic-Arch-Kampagne
+    cat > /tmp/aur-c2-blocklist.tmp << 'BLOCKLIST'
+# arch-shield C2 Blocklist — Atomic Arch & verwandte Kampagnen
+# Generiert: $(date)
+0.0.0.0 temp.sh
+0.0.0.0 temp.sh.
+BLOCKLIST
+    echo "  C2-Blocklist aktualisiert" >> "$LOGFILE"
+fi
+
+echo "[$DATE] Daily update complete" >> "$LOGFILE"
+echo "" >> "$LOGFILE"
+DAILYSCRIPT
+    chmod +x "$daily_script"
+
+    # systemd Service für Daily Update
+    cat > "$daily_service" << 'SVC'
+[Unit]
+Description=Arch-Shield Daily Threat-Intel Update
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=%h/.local/share/arch-shield/daily-update.sh
+Nice=19
+IOSchedulingClass=idle
+SVC
+
+    # systemd Timer für Daily Update (läuft um 6:00 Uhr)
+    cat > "$daily_timer" << 'TIMER'
+[Unit]
+Description=Run Arch-Shield Threat-Intel Update daily
+
+[Timer]
+OnCalendar=06:00
+Persistent=true
+RandomizedDelaySec=30min
+
+[Install]
+WantedBy=timers.target
+TIMER
+
+    systemctl --user daemon-reload 2>/dev/null || true
+    systemctl --user enable --now aur-shield-daily-update.timer 2>/dev/null || {
+        log_wrn "Daily Update Timer konnte nicht aktiviert werden"
+        return 1
+    }
+
+    log_ok "Täglicher Threat-Intel Timer aktiviert (täglich um 06:00)"
+    log_inf "Logs unter: $script_dir/daily-update.log"
+}
+
+# ── 8b: C2-Netzwerkblockierung ────────────────────────────────────────────────
+install_c2_blocking() {
+    echo -e "\n${BOLD}[2/4] C2-Netzwerkblockierung${NC}"
+    echo -e "  Blockiert bekannte C2-Domains der Atomic-Arch-Malware via /etc/hosts"
+
+    local block_file="/etc/hosts.d/arch-shield-c2-blocklist"
+
+    # Bekannte C2-Domains der Atomic-Arch-Kampagne (aus Truesec/ioctl.fail Analyse)
+    local c2_domains=(
+        "temp.sh"           # Haupt-Exfiltration-Server
+        "temp.sh."          # FQDN Variante
+    )
+
+    # Bekannte C2-IPs (aus IOC-Datenbank)
+    local c2_ips=()
+    # Tor onion service wird nicht blockiert (dynamisch)
+
+    [[ "$DRY_RUN" == "true" ]] && {
+        echo -e "  ${DIM}[DRY-RUN] Würde erstellen: /etc/hosts Einträge für C2-Domains${NC}"
+        return 0
+    }
+
+    if ! find_sudo; then
+        log_wrn "Kein sudo — C2-Blockierung übersprungen"
+        echo -e "  ${YELLOW}Manuell: sudo tee -a /etc/hosts << 'EOF'${NC}"
+        for domain in "${c2_domains[@]}"; do
+            echo -e "  ${YELLOW}0.0.0.0 $domain${NC}"
+        done
+        echo -e "  ${YELLOW}EOF${NC}"
+        return 1
+    fi
+
+    # Prüfe ob bereits vorhanden
+    if grep -q "arch-shield-c2-blocklist" /etc/hosts 2>/dev/null; then
+        log_ok "C2-Blocklist bereits in /etc/hosts"
+        return 0
+    fi
+
+    # C2-Domains zu /etc/hosts hinzufügen
+    echo -e "  ${DIM}Füge C2-Domains zu /etc/hosts hinzu...${NC}"
+    run_sudo bash -c 'cat >> /etc/hosts << "HOSTSBLOCK"
+
+# arch-shield-c2-blocklist — Atomic Arch C2 Domains
+# Blockiert bekannte Command-and-Control Server der AUR-Malware
+# Generiert von arch-shield.sh
+0.0.0.0 temp.sh
+0.0.0.0 temp.sh.
+HOSTSBLOCK'
+    log_ok "C2-Domains blockiert (temp.sh → 0.0.0.0)"
+
+    # Optional: Firewall-Regeln für C2-IPs
+    if command_exists iptables; then
+        echo -e "  ${DIM}iptables verfügbar — füge OUTPUT-DROP für C2-IPs hinzu...${NC}"
+        # temp.sh auflösen und blockieren
+        local temp_sh_ip
+        temp_sh_ip=$(dig +short temp.sh A 2>/dev/null | head -1 || true)
+        if [[ -n "$temp_sh_ip" ]]; then
+            run_sudo iptables -C OUTPUT -d "$temp_sh_ip" -j DROP 2>/dev/null || {
+                run_sudo iptables -A OUTPUT -d "$temp_sh_ip" -j DROP 2>/dev/null && \
+                    log_ok "iptables: $temp_sh_ip (temp.sh) blocked"
+            } || true
+        fi
+    elif command_exists nft; then
+        echo -e "  ${DIM}nftables verfügbar — C2-Blocking via nft...${NC}"
+        local temp_sh_ip
+        temp_sh_ip=$(dig +short temp.sh A 2>/dev/null | head -1 || true)
+        if [[ -n "$temp_sh_ip" ]]; then
+            run_sudo nft add rule inet filter output ip daddr "$temp_sh_ip" drop 2>/dev/null || true
+            log_ok "nftables: $temp_sh_ip (temp.sh) blocked"
+        fi
+    fi
+
+    log_inf "Hinweis: Tor onion C2 kann nicht via /etc/hosts geblockt werden."
+    log_inf "Für Tor-Blocking: sudo pacman -S tor und torrc konfigurieren."
+}
+
+# ── 8c: auditd File-Integrity-Monitoring ──────────────────────────────────────
+install_auditd_monitoring() {
+    echo -e "\n${BOLD}[3/4] auditd File-Integrity-Monitoring${NC}"
+    echo -e "  Überwacht sensible Verzeichnisse in Echtzeit (Kernel-Level)"
+
+    [[ "$DRY_RUN" == "true" ]] && {
+        echo -e "  ${DIM}[DRY-RUN] Würde installieren: auditd + Rules für ~/.ssh, ~/.config, /etc/systemd${NC}"
+        return 0
+    }
+
+    # Prüfe ob auditd installiert ist
+    if ! command_exists auditd && ! command_exists auditctl; then
+        log_wrn "auditd nicht installiert"
+        echo -e "  ${YELLOW}Installiere: sudo pacman -S audit${NC}"
+        echo -e "  ${DIM}  audit überwacht Kernel-System-Calls in Echtzeit${NC}"
+        echo -e "  ${DIM}  Erkennt Zugriffe auf ~/.ssh, ~/.config, /etc/systemd${NC}"
+        if ! confirm "auditd installieren? (sudo pacman -S audit)"; then
+            return 1
+        fi
+        if find_sudo; then
+            run_sudo pacman -S --noconfirm audit 2>/dev/null || {
+                log_err "Installation von audit fehlgeschlagen"
+                return 1
+            }
+            run_sudo systemctl enable --now auditd 2>/dev/null || true
+            log_ok "auditd installiert und gestartet"
+        else
+            log_err "Kein sudo verfügbar"
+            return 1
+        fi
+    else
+        log_ok "auditd bereits installiert"
+    fi
+
+    # Audit-Regeln erstellen
+    local rules_file="/tmp/arch-shield-audit.rules"
+    cat > "$rules_file" << 'AUDITRULES'
+# arch-shield: File Integrity Monitoring Rules
+# Überwacht sensible Pfade auf Lese-/Schreibzugriffe
+
+# SSH Keys überwachen
+-w /home/ -p wa -k arch-shield-home-access
+-w /root/.ssh/ -p wa -k arch-shield-root-ssh
+
+# Systemd Units überwachen (Malware-Persistenz)
+-w /etc/systemd/system/ -p wa -k arch-shield-systemd
+-w /usr/lib/systemd/system/ -p wa -k arch-shield-systemd
+
+# Pacman-Konfiguration überwachen
+-w /etc/pacman.conf -p wa -k arch-shield-pacman
+-w /etc/pacman.d/ -p wa -k arch-shield-pacman
+
+# Sysctl-Konfiguration überwachen (eBPF-Härtung könnte deaktiviert werden)
+-w /etc/sysctl.d/ -p wa -k arch-shield-sysctl
+
+# Crontab überwachen (Malware-Persistenz)
+-w /etc/cron.d/ -p wa -k arch-shield-cron
+-w /etc/crontab -p wa -k arch-shield-cron
+
+# Sudoers überwachen (Privilege Escalation)
+-w /etc/sudoers -p wa -k arch-shield-sudoers
+-w /etc/sudoers.d/ -p wa -k arch-shield-sudoers
+
+# Hosts-Datei überwachen (C2-Blocking könnte entfernt werden)
+-w /etc/hosts -p wa -k arch-shield-hosts
+
+# Kernel-Module Laden überwachen
+-w /sbin/insmod -p x -k arch-shield-kernel-module
+-w /sbin/modprobe -p x -k arch-shield-kernel-module
+-w /sbin/rmmod -p x -k arch-shield-kernel-module
+AUDITRULES
+
+    # Regeln installieren
+    if find_sudo; then
+        local audit_dir="/etc/audit/rules.d"
+        run_sudo mkdir -p "$audit_dir" 2>/dev/null || true
+        run_sudo cp "$rules_file" "$audit_dir/arch-shield.rules" 2>/dev/null || {
+            log_wrn "Konnte audit-rules nicht installieren"
+            return 1
+        }
+        # Regeln neu laden
+        run_sudo augenrules --load 2>/dev/null || run_sudo auditctl -R "$rules_file" 2>/dev/null || true
+        log_ok "auditd Rules installiert — überwacht SSH, systemd, pacman, cron, sudo, hosts"
+
+        # Status anzeigen
+        local active_rules
+        active_rules=$(run_sudo auditctl -l 2>/dev/null | grep -c "arch-shield" || echo "0")
+        echo -e "  ${DIM}Aktive arch-shield Audit-Regeln: $active_rules${NC}"
+
+        # Hinweis zum Auswerten
+        log_inf "Audit-Logs auswerten: sudo ausearch -k arch-shield-systemd"
+        log_inf "Oder: sudo aureport --key --summary"
+    else
+        log_wrn "Kein sudo — audit-rules müssen manuell installiert werden"
+        echo -e "  sudo cp $rules_file /etc/audit/rules.d/arch-shield.rules"
+        echo -e "  sudo augenrules --load"
+    fi
+}
+
+# ── 8d: rkhunter Rootkit-Detection ────────────────────────────────────────────
+install_rkhunter() {
+    echo -e "\n${BOLD}[4/4] rkhunter Rootkit-Detection${NC}"
+    echo -e "  Kernel-Level Rootkit-Scanner (ergänzt aur-scanner)"
+
+    [[ "$DRY_RUN" == "true" ]] && {
+        echo -e "  ${DIM}[DRY-RUN] Würde installieren: rkhunter + cronjob${NC}"
+        return 0
+    }
+
+    if ! command_exists rkhunter; then
+        log_inf "Installiere rkhunter..."
+        if find_sudo; then
+            run_sudo pacman -S --noconfirm rkhunter 2>/dev/null || {
+                log_err "Installation von rkhunter fehlgeschlagen"
+                return 1
+            }
+        else
+            log_err "Kein sudo verfügbar"
+            echo -e "  ${YELLOW}Manuell: sudo pacman -S rkhunter${NC}"
+            return 1
+        fi
+    else
+        log_ok "rkhunter bereits installiert"
+    fi
+
+    # rkhunter Datenbank updaten
+    if command_exists rkhunter; then
+        echo -e "  ${DIM}Aktualisiere rkhunter Datenbank...${NC}"
+        run_sudo rkhunter --update 2>/dev/null || true
+        run_sudo rkhunter --propupd 2>/dev/null || true
+        log_ok "rkhunter Datenbank aktualisiert"
+
+        # Ersten Scan durchführen
+        echo -e "  ${DIM}Erster Scan (kann 1-2 Minuten dauern)...${NC}"
+        run_sudo rkhunter --check --sk --report-warnings-only 2>/dev/null | \
+            tee -a "$LOG_FILE" || true
+        log_ok "rkhunter Scan abgeschlossen"
+
+        # Wöchentliches rkhunter cron-Script erstellen
+        local cron_script="$HOME/.local/share/arch-shield/rkhunter-weekly.sh"
+        mkdir -p "$(dirname "$cron_script")"
+        cat > "$cron_script" << 'RKCRON'
+#!/bin/bash
+# Wöchentlicher rkhunter Rootkit-Scan
+LOG="$HOME/.local/share/arch-shield/rkhunter-weekly.log"
+DATE=$(date '+%Y-%m-%d %H:%M:%S')
+echo "[$DATE] rkhunter weekly scan" >> "$LOG"
+sudo rkhunter --update --quiet 2>/dev/null
+sudo rkhunter --propupd --quiet 2>/dev/null
+sudo rkhunter --check --sk --report-warnings-only >> "$LOG" 2>&1
+echo "[$DATE] scan complete" >> "$LOG"
+echo "" >> "$LOG"
+RKCRON
+        chmod +x "$cron_script"
+
+        # systemd Timer für wöchentlichen rkhunter scan
+        local rkh_service="$HOME/.config/systemd/user/rkhunter-weekly.service"
+        local rkh_timer="$HOME/.config/systemd/user/rkhunter-weekly.timer"
+        mkdir -p "$(dirname "$rkh_service")"
+
+        cat > "$rkh_service" << 'SVC'
+[Unit]
+Description=Weekly rkhunter Rootkit Scan
+
+[Service]
+Type=oneshot
+ExecStart=%h/.local/share/arch-shield/rkhunter-weekly.sh
+Nice=19
+SVC
+
+        cat > "$rkh_timer" << 'TIMER'
+[Unit]
+Description=Run rkhunter weekly
+
+[Timer]
+OnCalendar=Sun 03:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+TIMER
+
+        systemctl --user daemon-reload 2>/dev/null || true
+        systemctl --user enable --now rkhunter-weekly.timer 2>/dev/null || true
+        log_ok "rkhunter wöchentlicher Timer aktiviert (Sonntag 03:00)"
+    fi
+}
+
+# ── Hauptfunktion für Advanced Protection ──────────────────────────────────────
+install_advanced_protection() {
+    echo ""
+    echo -e "${BOLD}${CYAN}━━━ MODUL 8: Advanced Protection ━━━${NC}"
+    echo -e "Erweiterte Schutzmaßnahmen (empfohlen von deepseek-v4-pro Security Review)"
+    echo ""
+    echo -e "  ${BOLD}1.${NC} Täglicher Threat-Intel Update Timer (statt wöchentlich)"
+    echo -e "  ${BOLD}2.${NC} C2-Netzwerkblockierung (/etc/hosts + Firewall)"
+    echo -e "  ${BOLD}3.${NC} auditd File-Integrity-Monitoring (Kernel-Ebene)"
+    echo -e "  ${BOLD}4.${NC} rkhunter Rootkit-Detection (ergänzt aur-scanner)"
+    echo ""
+    log_sep
+
+    if ! confirm "Alle 4 Advanced Protection Module installieren?"; then
+        echo -e "Wähle einzelne Module:"
+        echo -e "  1) Daily Threat-Intel Timer"
+        echo -e "  2) C2-Netzwerkblockierung"
+        echo -e "  3) auditd Monitoring"
+        echo -e "  4) rkhunter"
+        echo -e "  a) Alle"
+        echo -e "  0) Abbrechen"
+        read -rp "Auswahl: " adv_choice
+        case "$adv_choice" in
+            1) install_daily_timer ;;
+            2) install_c2_blocking ;;
+            3) install_auditd_monitoring ;;
+            4) install_rkhunter ;;
+            a|A) install_daily_timer; install_c2_blocking; install_auditd_monitoring; install_rkhunter ;;
+            *) echo "Abgebrochen"; return 0 ;;
+        esac
+    else
+        install_daily_timer
+        install_c2_blocking
+        install_auditd_monitoring
+        install_rkhunter
+    fi
+
+    echo ""
+    log_sep
+    echo -e "${GREEN}${BOLD}  ✅ Advanced Protection installiert${NC}"
+    log_sep
+}
+
+#==================================================================================
 #  MENÜ & BANNER
 #==================================================================================
 
@@ -2062,7 +2490,8 @@ show_menu() {
     echo -e "  ${BOLD}6${NC}  🚀 Alles (1+2+3)           Scan + Schutz + Härtung"
     echo -e "  ${BOLD}7${NC}  🚨 Notfall-Bereinigung     Geführte Wiederherstellung bei Infektion"
     echo -e "  ${BOLD}8${NC}  🔄 Threat-Intel Update    Aktualisiere IOC-Datenbanken"
-    echo -e "  ${BOLD}9${NC}  ❓ Hilfe                   Anleitung und Best Practices"
+    echo -e "  ${BOLD}9${NC}  🚀 Advanced Protection    Daily Timer, C2-Blocking, auditd, rkhunter"
+    echo -e "  ${BOLD}10${NC} ❓ Hilfe                   Anleitung und Best Practices"
     echo -e "  ${BOLD}0${NC}  Beenden"
     echo ""
 }
@@ -2081,6 +2510,7 @@ show_help() {
     echo -e "  ./arch-shield.sh all           Scan + Schutz + Härtung"
     echo -e "  ./arch-shield.sh emergency     Notfall-Bereinigung (bei Infektion)"
     echo -e "  ./arch-shield.sh update        Threat-Intelligence-Datenbanken aktualisieren"
+    echo -e "  ./arch-shield.sh advanced     Advanced Protection (Daily Timer, C2-Blocking, auditd, rkhunter)"
     echo -e "  ./arch-shield.sh --dry-run     Simulation (nichts wird geändert)"
     echo -e "  ./arch-shield.sh --yes         Alle Bestätigungen automatisch bejahen"
     echo -e "  ./arch-shield.sh help          Diese Hilfe"
@@ -2131,7 +2561,7 @@ main() {
         case "$1" in
             --dry-run) DRY_RUN=true; shift ;;
             --yes|-y)  FORCE_YES=true; shift ;;
-            scan|protect|harden|status|all|help|emergency|update) action="$1"; shift ;;
+            scan|protect|harden|status|all|help|emergency|update|advanced) action="$1"; shift ;;
             check)     action="check"; shift; pkg_arg="${1:-}"; shift ;;
             menu)      action="menu"; shift ;;
             *)         action="menu"; break ;;
@@ -2182,6 +2612,9 @@ main() {
         update)
             update_threat_intel
             ;;
+        advanced)
+            install_advanced_protection
+            ;;
         help)
             show_help
             ;;
@@ -2199,7 +2632,8 @@ main() {
                     6) run_full_scan; echo; install_protection; echo; harden_system; echo; show_status ;;
                     7) run_emergency ;;
                     8) update_threat_intel ;;
-                    9) show_help ;;
+                    9) install_advanced_protection ;;
+                    10) show_help ;;
                     0|q|Q|exit|beenden) echo -e "${GREEN}Bis bald! Bleib sicher. 🛡️${NC}"; exit 0 ;;
                     *) echo -e "${RED}Ungültige Auswahl${NC}" ;;
                 esac
