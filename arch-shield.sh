@@ -15,7 +15,7 @@ set -euo pipefail
 IFS=$'\n\t'
 
 # ── Globale Variablen ──────────────────────────────────────────────────────────
-SCRIPT_VERSION="1.4.1"
+SCRIPT_VERSION="1.4.3"
 SCRIPT_NAME="arch-shield"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PYTHON_BIN=""
@@ -612,6 +612,14 @@ install_weekly_timer() {
 set -euo pipefail
 LOGFILE="$HOME/.local/share/arch-shield/scan-log.txt"
 DATE=$(date '+%Y-%m-%d %H:%M:%S')
+
+# Log-Rotation: halte Log unter 1MB (größenbasiert)
+if [[ -f "$LOGFILE" ]]; then
+    LOG_SIZE=$(wc -c < "$LOGFILE" 2>/dev/null || echo 0)
+    if [[ "$LOG_SIZE" -gt 1048576 ]]; then
+        tail -c 524288 "$LOGFILE" > "${LOGFILE}.tmp" && mv "${LOGFILE}.tmp" "$LOGFILE"
+    fi
+fi
 echo "========================================" >> "$LOGFILE"
 echo "[$DATE] Arch-Shield Weekly Security Scan" >> "$LOGFILE"
 echo "========================================" >> "$LOGFILE"
@@ -621,13 +629,13 @@ echo "--- aur-scan system ---" >> "$LOGFILE"
 /usr/bin/aur-scan system >> "$LOGFILE" 2>&1 || echo "aur-scan: non-zero exit" >> "$LOGFILE"
 
 # aur-malware-check (falls vorhanden)
-MALWARE_CHECK_DIR="/tmp/arch-shield-aur-malware-check"
+MALWARE_CHECK_DIR="${ARCH_SHIELD_MALWARE_DIR:-$HOME/.local/share/arch-shield/aur-malware-check}"
 if [[ -d "$MALWARE_CHECK_DIR/aur_check" ]] && command -v python3 &>/dev/null; then
     echo "--- aur-malware-check ---" >> "$LOGFILE"
-    cd "$MALWARE_CHECK_DIR"
-    # Zuerst Threat-Intel Update (git pull für neueste IOC-Listen)
-    git pull --quiet 2>/dev/null && echo "IOC-Datenbank aktualisiert" >> "$LOGFILE"
-    python3 -m aur_check --full --all-time >> "$LOGFILE" 2>&1 || echo "aur_check: non-zero exit" >> "$LOGFILE"
+    # Threat-Intel Update in Subshell (cd-Fehler isoliert)
+    (cd "$MALWARE_CHECK_DIR" && \
+        git pull --quiet 2>/dev/null && echo "IOC-Datenbank aktualisiert" >> "$LOGFILE" && \
+        python3 -m aur_check --full --all-time >> "$LOGFILE" 2>&1 || echo "aur_check: non-zero exit" >> "$LOGFILE")
 fi
 
 # eBPF Rootkit check (sicher ohne Shell-Glob-Expansion)
@@ -2069,18 +2077,27 @@ install_daily_timer() {
 set -uo pipefail
 LOGFILE="$HOME/.local/share/arch-shield/daily-update.log"
 DATE=$(date '+%Y-%m-%d %H:%M:%S')
+
+# Log-Rotation: halte Log unter 1MB (größenbasiert, nicht zeilenbasiert)
+if [[ -f "$LOGFILE" ]]; then
+    LOG_SIZE=$(wc -c < "$LOGFILE" 2>/dev/null || echo 0)
+    if [[ "$LOG_SIZE" -gt 1048576 ]]; then
+        tail -c 524288 "$LOGFILE" > "${LOGFILE}.tmp" && mv "${LOGFILE}.tmp" "$LOGFILE"
+    fi
+fi
 echo "[$DATE] Daily Threat-Intel Update" >> "$LOGFILE"
 
 # 1. aur-malware-check git pull (neueste IOC-Listen)
-MALWARE_CHECK_DIR="/tmp/arch-shield-aur-malware-check"
+# Sicheres Verzeichnis — bevorzugt mktemp, Fallback auf user-local Pfad
+MALWARE_CHECK_DIR="${ARCH_SHIELD_MALWARE_DIR:-$HOME/.local/share/arch-shield/aur-malware-check}"
 if [[ -d "$MALWARE_CHECK_DIR/.git" ]]; then
-    cd "$MALWARE_CHECK_DIR"
-    git pull --quiet 2>/dev/null && echo "  IOC-Datenbank aktualisiert" >> "$LOGFILE" || echo "  IOC-Update fehlgeschlagen (Netzwerk?)" >> "$LOGFILE"
+    git -C "$MALWARE_CHECK_DIR" pull --quiet 2>/dev/null && echo "  IOC-Datenbank aktualisiert" >> "$LOGFILE" || echo "  IOC-Update fehlgeschlagen (Netzwerk?)" >> "$LOGFILE"
 elif command -v git &>/dev/null; then
-    MALWARE_CHECK_DIR=$(mktemp -d -t arch-shield-aur-malware-check.XXXXXX 2>/dev/null || {
-        MALWARE_CHECK_DIR="$HOME/.local/share/arch-shield/aur-malware-check"
-        mkdir -p "$MALWARE_CHECK_DIR"
-    })
+    # Altes/kaputtes Verzeichnis entfernen falls es ohne .git existiert
+    if [[ -d "$MALWARE_CHECK_DIR" ]] && [[ ! -d "$MALWARE_CHECK_DIR/.git" ]]; then
+        rm -rf "$MALWARE_CHECK_DIR" 2>/dev/null || true
+    fi
+    mkdir -p "$MALWARE_CHECK_DIR"
     git clone --depth 1 --quiet "https://github.com/lenucksi/aur-malware-check.git" "$MALWARE_CHECK_DIR" 2>/dev/null \
         && echo "  aur-malware-check installiert" >> "$LOGFILE" \
         || echo "  FEHLER: aur-malware-check konnte nicht installiert werden" >> "$LOGFILE"
@@ -2088,16 +2105,14 @@ fi
 
 # 2. HedgeDoc Live-Liste
 if [[ -d "$MALWARE_CHECK_DIR/aur_check" ]] && command -v python3 &>/dev/null; then
-    cd "$MALWARE_CHECK_DIR"
-    python3 -m aur_check --refresh --full >> "$LOGFILE" 2>&1 \
+    (cd "$MALWARE_CHECK_DIR" && python3 -m aur_check --refresh --full >> "$LOGFILE" 2>&1 \
         && echo "  HedgeDoc aktualisiert" >> "$LOGFILE" \
-        || echo "  HedgeDoc-Update fehlgeschlagen" >> "$LOGFILE"
+        || echo "  HedgeDoc-Update fehlgeschlagen" >> "$LOGFILE")
 fi
 
 # 3. Schneller Scan (nur installierte Pakete gegen IOC-Liste)
 if [[ -d "$MALWARE_CHECK_DIR/aur_check" ]] && command -v python3 &>/dev/null; then
-    cd "$MALWARE_CHECK_DIR"
-    python3 -m aur_check --all-time >> "$LOGFILE" 2>&1 || echo "  aur_check: Warnung/Funde" >> "$LOGFILE"
+    (cd "$MALWARE_CHECK_DIR" && python3 -m aur_check --all-time >> "$LOGFILE" 2>&1 || echo "  aur_check: Warnung/Funde" >> "$LOGFILE")
 fi
 
 # 4. eBPF Rootkit-Check (sicher ohne Shell-Glob-Expansion)
@@ -2111,7 +2126,8 @@ fi
 # 5. C2-Domain-Blocklist aktualisieren (tatsächlich in /etc/hosts installieren)
 # Bekannte C2-Domains der Atomic-Arch-Kampagne
 C2_DOMAINS="temp.sh"
-if command -v sudo &>/dev/null; then
+# Prüfe ob nicht-interaktives sudo verfügbar ist (systemd service hat kein TTY)
+if command -v sudo &>/dev/null && sudo -n true 2>/dev/null; then
     # Alten arch-shield Block entfernen und neu schreiben (idempotent)
     sudo sed -i '/# arch-shield-c2-blocklist/,/^$/d' /etc/hosts 2>/dev/null || true
     echo "" | sudo tee -a /etc/hosts >/dev/null 2>&1 || true
@@ -2120,6 +2136,8 @@ if command -v sudo &>/dev/null; then
     echo "0.0.0.0 temp.sh." | sudo tee -a /etc/hosts >/dev/null 2>&1 || true
     echo "" | sudo tee -a /etc/hosts >/dev/null 2>&1 || true
     echo "  C2-Blocklist aktualisiert in /etc/hosts" >> "$LOGFILE"
+else
+    echo "  C2-Blocklist nicht aktualisiert (sudo benötigt Passwort/TTY)" >> "$LOGFILE"
 fi
 
 echo "[$DATE] Daily update complete" >> "$LOGFILE"
@@ -2202,41 +2220,50 @@ install_c2_blocking() {
         log_inf "C2-Blocklist wird aktualisiert (alte Einträge entfernt)..."
     fi
 
-    # C2-Domains zu /etc/hosts hinzufügen
+    # C2-Domains zu /etc/hosts hinzufügen (mit tee statt bash -c Root-Shell)
     echo -e "  ${DIM}Füge C2-Domains zu /etc/hosts hinzu...${NC}"
-    run_sudo bash -c 'cat >> /etc/hosts << "HOSTSBLOCK"
-
-# arch-shield-c2-blocklist — Atomic Arch C2 Domains
-# Blockiert bekannte Command-and-Control Server der AUR-Malware
-# Generiert von arch-shield.sh
-0.0.0.0 temp.sh
-0.0.0.0 temp.sh.
-HOSTSBLOCK'
+    {
+        echo ""
+        echo "# arch-shield-c2-blocklist — Atomic Arch C2 Domains"
+        echo "# Blockiert bekannte Command-and-Control Server der AUR-Malware"
+        echo "# Generiert von arch-shield.sh"
+        echo "0.0.0.0 temp.sh"
+        echo "0.0.0.0 temp.sh."
+    } | run_sudo tee -a /etc/hosts > /dev/null
     log_ok "C2-Domains blockiert (temp.sh → 0.0.0.0)"
 
     # Optional: Firewall-Regeln für C2-IPs
     if command_exists iptables; then
         echo -e "  ${DIM}iptables verfügbar — füge OUTPUT-DROP für C2-IPs hinzu...${NC}"
-        # temp.sh auflösen und blockieren
-        local temp_sh_ip
-        temp_sh_ip=$(dig +short +time=5 temp.sh A 2>/dev/null | head -1 || true)
-        if [[ -n "$temp_sh_ip" ]]; then
-            run_sudo iptables -C OUTPUT -d "$temp_sh_ip" -j DROP 2>/dev/null || {
-                run_sudo iptables -A OUTPUT -d "$temp_sh_ip" -j DROP 2>/dev/null && \
+        if ! command_exists dig; then
+            log_wrn "dig nicht verfügbar — kann temp.sh IP nicht auflösen für iptables-Blocking"
+        else
+            local temp_sh_ip
+            temp_sh_ip=$(timeout 10 dig +short +time=5 temp.sh A 2>/dev/null | head -1 || true)
+            if [[ -n "$temp_sh_ip" ]]; then
+                if run_sudo iptables -C OUTPUT -d "$temp_sh_ip" -j DROP 2>/dev/null; then
+                    log_ok "iptables: $temp_sh_ip (temp.sh) bereits geblockt"
+                elif run_sudo iptables -A OUTPUT -d "$temp_sh_ip" -j DROP 2>/dev/null; then
                     log_ok "iptables: $temp_sh_ip (temp.sh) blocked"
-            } || true
+                else
+                    log_wrn "iptables: Konnte Regel für $temp_sh_ip nicht hinzufügen"
+                fi
+            fi
         fi
     elif command_exists nft; then
         echo -e "  ${DIM}nftables verfügbar — C2-Blocking via nft...${NC}"
-        local temp_sh_ip
-        temp_sh_ip=$(dig +short +time=5 temp.sh A 2>/dev/null | head -1 || true)
-        if [[ -n "$temp_sh_ip" ]]; then
-            # Duplikat-Prüfung vor dem Hinzufügen
-            if ! run_sudo nft list ruleset 2>/dev/null | grep -q "ip daddr $temp_sh_ip drop"; then
-                run_sudo nft add rule inet filter output ip daddr "$temp_sh_ip" drop 2>/dev/null && \
-                    log_ok "nftables: $temp_sh_ip (temp.sh) blocked"
-            else
-                log_ok "nftables: $temp_sh_ip bereits geblockt"
+        if ! command_exists dig; then
+            log_wrn "dig nicht verfügbar — kann temp.sh IP nicht auflösen für nftables-Blocking"
+        else
+            local temp_sh_ip
+            temp_sh_ip=$(timeout 10 dig +short +time=5 temp.sh A 2>/dev/null | head -1 || true)
+            if [[ -n "$temp_sh_ip" ]]; then
+                if ! run_sudo nft list ruleset 2>/dev/null | grep -q "ip daddr $temp_sh_ip drop"; then
+                    run_sudo nft add rule inet filter output ip daddr "$temp_sh_ip" drop 2>/dev/null && \
+                        log_ok "nftables: $temp_sh_ip (temp.sh) blocked"
+                else
+                    log_ok "nftables: $temp_sh_ip bereits geblockt"
+                fi
             fi
         fi
     fi
@@ -2279,15 +2306,22 @@ install_auditd_monitoring() {
         log_ok "auditd bereits installiert"
     fi
 
-    # Audit-Regeln erstellen
-    local rules_file="/tmp/arch-shield-audit.rules"
+    # Audit-Regeln erstellen (mit mktemp für sicheren Temp-Pfad, kein unsicherer Fallback)
+    local rules_file
+    rules_file=$(mktemp --tmpdir arch-shield-audit.XXXXXX.rules 2>/dev/null) || {
+        log_err "Konnte keine sichere Temp-Datei für audit-rules erstellen"
+        return 1
+    }
     cat > "$rules_file" << 'AUDITRULES'
 # arch-shield: File Integrity Monitoring Rules
 # Überwacht sensible Pfade auf Lese-/Schreibzugriffe
 
 # SSH Keys überwachen (Syscall-basiert, da -w /home/ nur das Verzeichnis selbst überwacht)
 -a always,exit -F arch=b64 -S open,openat -F dir=/home -F uid!=0 -F auid>=1000 -F auid!=unset -F success=1 -k arch-shield-home-access
--w /root/.ssh/ -p wa -k arch-shield-root-ssh
+-w /root/.ssh/ -p rwa -k arch-shield-root-ssh
+-w /root/.ssh/authorized_keys -p rwa -k arch-shield-root-ssh
+-w /root/.ssh/id_rsa -p rwa -k arch-shield-root-ssh
+-w /root/.ssh/id_ed25519 -p rwa -k arch-shield-root-ssh
 
 # Systemd Units überwachen (Malware-Persistenz)
 -w /etc/systemd/system/ -p wa -k arch-shield-systemd
@@ -2490,7 +2524,20 @@ install_advanced_protection() {
 
     echo ""
     log_sep
-    echo -e "${GREEN}${BOLD}  ✅ Advanced Protection installiert${NC}"
+    local success_count=0
+    local total_count=4
+    systemctl --user is-active --quiet aur-shield-daily-update.timer 2>/dev/null && success_count=$((success_count + 1))
+    grep -q "arch-shield-c2-blocklist" /etc/hosts 2>/dev/null && success_count=$((success_count + 1))
+    (sudo auditctl -l 2>/dev/null || auditctl -l 2>/dev/null || true) | grep -q "arch-shield" && success_count=$((success_count + 1))
+    command_exists rkhunter && success_count=$((success_count + 1))
+
+    if [[ $success_count -eq $total_count ]]; then
+        echo -e "${GREEN}${BOLD}  ✅ Advanced Protection installiert ($success_count/$total_count Module aktiv)${NC}"
+    elif [[ $success_count -gt 0 ]]; then
+        echo -e "${YELLOW}${BOLD}  ⚠️  Advanced Protection teilweise installiert ($success_count/$total_count Module aktiv)${NC}"
+    else
+        echo -e "${RED}${BOLD}  ❌ Advanced Protection fehlgeschlagen (0/$total_count Module aktiv)${NC}"
+    fi
     log_sep
 }
 
