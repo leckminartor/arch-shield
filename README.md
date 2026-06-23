@@ -117,6 +117,27 @@ Es wurde in einer Distrobox Arch-Container-Umgebung getestet (Scan, Notfall-Bere
 - [Truesec Analysis](https://www.truesec.com/hub/blog/supply-chain-attack-compromising-arch-linux-aur-packages-infostealer-rootkit)
 - [CloudSecurityAlliance eBPF Rootkit Analysis](https://labs.cloudsecurityalliance.org/research/csa-research-note-aur-supply-chain-ebpf-rootkit-20260614-csa/)
 
+## Haftungsausschluss
+
+Dieses Projekt wird freiwillig und ohne Gewähr bereitgestellt.
+
+**Es wird KEINERLEI Haftung übernommen** — weder für direkte noch indirekte Schäden, Datenverlust, Systemausfälle oder Sicherheitsvorfälle, die aus der Nutzung dieses Scripts resultieren könnten.
+
+- ❌ **Keine Garantie** auf 100% Schutz vor allen Bedrohungen
+- ❌ **Keine Garantie** auf fehlerfreie Funktion in jeder Umgebung
+- ❌ **Keine Haftung** für falsche Erkennungen (False Positives) oder übersehene Bedrohungen (False Negatives)
+- ❌ **Keine Haftung** für Schäden an System, Daten oder Credentials
+
+**Die Nutzung erfolgt ausschließlich auf eigene Gefahr.**
+
+Dieses Script ist eine Ergänzung zu — kein Ersatz für — eigene Sorgfalt, manuelle PKGBUILD-Reviews und bewährte Security-Practices. Das AUR ist ein inoffizielles, von der Community erstelltes Repository. Die einzige sichere Nutzung erfordert die Überprüfung jeder Zeile in `PKGBUILD` und `.install`-Dateien vor der Installation.
+
+## Spenden
+
+Wenn dieses Script dir geholfen hat, freue ich mich über eine Spende:
+
+[![Donate](https://img.shields.io/badge/Donate-PayPal-blue.svg)](https://paypal.me/klausminator)
+
 ## Lizenz
 
 GPL-3.0-or-later — siehe [LICENSE](LICENSE)
