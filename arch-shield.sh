@@ -15,7 +15,7 @@ set -euo pipefail
 IFS=$'\n\t'
 
 # ── Globale Variablen ──────────────────────────────────────────────────────────
-SCRIPT_VERSION="1.4.0"
+SCRIPT_VERSION="1.4.1"
 SCRIPT_NAME="arch-shield"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PYTHON_BIN=""
@@ -322,7 +322,8 @@ run_full_scan() {
 
     if [[ -d /sys/fs/bpf ]]; then
         local bpf_hidden
-        bpf_hidden=$(ls /sys/fs/bpf/hidden_* 2>/dev/null || true)
+        bpf_hidden=""
+        compgen -G "/sys/fs/bpf/hidden_*" > /dev/null 2>&1 && bpf_hidden=$(compgen -G "/sys/fs/bpf/hidden_*")
         if [[ -n "$bpf_hidden" ]]; then
             log_err "eBPF-Rootkit-Spuren gefunden: $bpf_hidden"
             critical_findings=$((critical_findings + 1))
@@ -629,9 +630,14 @@ if [[ -d "$MALWARE_CHECK_DIR/aur_check" ]] && command -v python3 &>/dev/null; th
     python3 -m aur_check --full --all-time >> "$LOGFILE" 2>&1 || echo "aur_check: non-zero exit" >> "$LOGFILE"
 fi
 
-# eBPF Rootkit check
+# eBPF Rootkit check (sicher ohne Shell-Glob-Expansion)
 echo "--- eBPF rootkit check ---" >> "$LOGFILE"
-ls /sys/fs/bpf/hidden_* >> "$LOGFILE" 2>&1 || echo "No eBPF hidden maps" >> "$LOGFILE"
+if compgen -G "/sys/fs/bpf/hidden_*" > /dev/null 2>&1; then
+    compgen -G "/sys/fs/bpf/hidden_*" >> "$LOGFILE" 2>&1
+    echo "eBPF-ROOTKIT-SPUR GEFUNDEN!" >> "$LOGFILE"
+else
+    echo "No eBPF hidden maps" >> "$LOGFILE"
+fi
 
 # npm/bun cache check
 echo "--- npm/bun cache check ---" >> "$LOGFILE"
@@ -1229,11 +1235,12 @@ emergency_scan() {
     # 3. eBPF Rootkit
     emergency_log "--- eBPF Rootkit-Check ---"
     local bpf_maps
-    bpf_maps=$(ls /sys/fs/bpf/hidden_* 2>/dev/null || true)
-    if [[ -n "$bpf_maps" ]]; then
+    bpf_hidden=""
+    if compgen -G "/sys/fs/bpf/hidden_*" > /dev/null 2>&1; then
+        bpf_hidden=$(compgen -G "/sys/fs/bpf/hidden_*")
         EMERGENCY_EBPF_ROOTKIT=true
-        echo "$bpf_maps" >> "$EMERGENCY_FORENSIC_LOG"
-        echo -e "${RED}  eBPF-Rootkit-Spuren gefunden: $bpf_maps${NC}"
+        echo "$bpf_hidden" >> "$EMERGENCY_FORENSIC_LOG"
+        echo -e "${RED}  eBPF-Rootkit-Spuren gefunden: $bpf_hidden${NC}"
     fi
 
     # 4. npm/bun Malware in Cache
@@ -1801,7 +1808,8 @@ emergency_recovery_flow() {
 
     # eBPF check
     local bpf_still
-    bpf_still=$(ls /sys/fs/bpf/hidden_* 2>/dev/null || true)
+    bpf_still=""
+    compgen -G "/sys/fs/bpf/hidden_*" > /dev/null 2>&1 && bpf_still=$(compgen -G "/sys/fs/bpf/hidden_*")
     if [[ -n "$bpf_still" ]]; then
         echo -e "  ${RED}✗ eBPF-Rootkit noch aktiv!${NC}"
         still_infected=true
@@ -2057,7 +2065,8 @@ install_daily_timer() {
     # Daily Update Script — lädt IOC-Listen + scannt
     cat > "$daily_script" << 'DAILYSCRIPT'
 #!/bin/bash
-set -euo pipefail
+# set -u statt set -e: Fehler in einzelnen Tasks sollen nicht alles abbrechen
+set -uo pipefail
 LOGFILE="$HOME/.local/share/arch-shield/daily-update.log"
 DATE=$(date '+%Y-%m-%d %H:%M:%S')
 echo "[$DATE] Daily Threat-Intel Update" >> "$LOGFILE"
@@ -2066,7 +2075,7 @@ echo "[$DATE] Daily Threat-Intel Update" >> "$LOGFILE"
 MALWARE_CHECK_DIR="/tmp/arch-shield-aur-malware-check"
 if [[ -d "$MALWARE_CHECK_DIR/.git" ]]; then
     cd "$MALWARE_CHECK_DIR"
-    git pull --quiet 2>/dev/null && echo "  IOC-Datenbank aktualisiert" >> "$LOGFILE"
+    git pull --quiet 2>/dev/null && echo "  IOC-Datenbank aktualisiert" >> "$LOGFILE" || echo "  IOC-Update fehlgeschlagen (Netzwerk?)" >> "$LOGFILE"
 elif command -v git &>/dev/null; then
     MALWARE_CHECK_DIR=$(mktemp -d -t arch-shield-aur-malware-check.XXXXXX 2>/dev/null || {
         MALWARE_CHECK_DIR="$HOME/.local/share/arch-shield/aur-malware-check"
@@ -2091,22 +2100,26 @@ if [[ -d "$MALWARE_CHECK_DIR/aur_check" ]] && command -v python3 &>/dev/null; th
     python3 -m aur_check --all-time >> "$LOGFILE" 2>&1 || echo "  aur_check: Warnung/Funde" >> "$LOGFILE"
 fi
 
-# 4. eBPF Rootkit-Check
-ls /sys/fs/bpf/hidden_* >> "$LOGFILE" 2>&1 \
-    && echo "  ⚠ eBPF-ROOTKIT-SPUR GEFUNDEN!" >> "$LOGFILE" \
-    || echo "  eBPF: clean" >> "$LOGFILE"
+# 4. eBPF Rootkit-Check (sicher ohne Shell-Glob-Expansion)
+if compgen -G "/sys/fs/bpf/hidden_*" > /dev/null 2>&1; then
+    compgen -G "/sys/fs/bpf/hidden_*" >> "$LOGFILE" 2>&1
+    echo "  ⚠ eBPF-ROOTKIT-SPUR GEFUNDEN!" >> "$LOGFILE"
+else
+    echo "  eBPF: clean" >> "$LOGFILE"
+fi
 
-# 5. C2-Domain-Blocklist aktualisieren
-BLOCKLIST_FILE="/etc/hosts.d/arch-shield-c2-blocklist"
-if command -v curl &>/dev/null; then
-    # Bekannte C2-Domains der Atomic-Arch-Kampagne
-    cat > /tmp/aur-c2-blocklist.tmp << 'BLOCKLIST'
-# arch-shield C2 Blocklist — Atomic Arch & verwandte Kampagnen
-# Generiert: $(date)
-0.0.0.0 temp.sh
-0.0.0.0 temp.sh.
-BLOCKLIST
-    echo "  C2-Blocklist aktualisiert" >> "$LOGFILE"
+# 5. C2-Domain-Blocklist aktualisieren (tatsächlich in /etc/hosts installieren)
+# Bekannte C2-Domains der Atomic-Arch-Kampagne
+C2_DOMAINS="temp.sh"
+if command -v sudo &>/dev/null; then
+    # Alten arch-shield Block entfernen und neu schreiben (idempotent)
+    sudo sed -i '/# arch-shield-c2-blocklist/,/^$/d' /etc/hosts 2>/dev/null || true
+    echo "" | sudo tee -a /etc/hosts >/dev/null 2>&1 || true
+    echo "# arch-shield-c2-blocklist — updated $(date '+%Y-%m-%d')" | sudo tee -a /etc/hosts >/dev/null 2>&1 || true
+    echo "0.0.0.0 temp.sh" | sudo tee -a /etc/hosts >/dev/null 2>&1 || true
+    echo "0.0.0.0 temp.sh." | sudo tee -a /etc/hosts >/dev/null 2>&1 || true
+    echo "" | sudo tee -a /etc/hosts >/dev/null 2>&1 || true
+    echo "  C2-Blocklist aktualisiert in /etc/hosts" >> "$LOGFILE"
 fi
 
 echo "[$DATE] Daily update complete" >> "$LOGFILE"
@@ -2157,12 +2170,10 @@ install_c2_blocking() {
     echo -e "\n${BOLD}[2/4] C2-Netzwerkblockierung${NC}"
     echo -e "  Blockiert bekannte C2-Domains der Atomic-Arch-Malware via /etc/hosts"
 
-    local block_file="/etc/hosts.d/arch-shield-c2-blocklist"
-
     # Bekannte C2-Domains der Atomic-Arch-Kampagne (aus Truesec/ioctl.fail Analyse)
     local c2_domains=(
-        "temp.sh"           # Haupt-Exfiltration-Server
-        "temp.sh."          # FQDN Variante
+        "temp.sh"
+        "temp.sh."
     )
 
     # Bekannte C2-IPs (aus IOC-Datenbank)
@@ -2184,10 +2195,11 @@ install_c2_blocking() {
         return 1
     fi
 
-    # Prüfe ob bereits vorhanden
+    # Prüfe ob bereits vorhanden — wenn ja, aktualisiere statt überspringe
     if grep -q "arch-shield-c2-blocklist" /etc/hosts 2>/dev/null; then
-        log_ok "C2-Blocklist bereits in /etc/hosts"
-        return 0
+        # Alten Block entfernen und neu schreiben (idempotent)
+        run_sudo sed -i '/# arch-shield-c2-blocklist/,/^$/d' /etc/hosts 2>/dev/null || true
+        log_inf "C2-Blocklist wird aktualisiert (alte Einträge entfernt)..."
     fi
 
     # C2-Domains zu /etc/hosts hinzufügen
@@ -2207,7 +2219,7 @@ HOSTSBLOCK'
         echo -e "  ${DIM}iptables verfügbar — füge OUTPUT-DROP für C2-IPs hinzu...${NC}"
         # temp.sh auflösen und blockieren
         local temp_sh_ip
-        temp_sh_ip=$(dig +short temp.sh A 2>/dev/null | head -1 || true)
+        temp_sh_ip=$(dig +short +time=5 temp.sh A 2>/dev/null | head -1 || true)
         if [[ -n "$temp_sh_ip" ]]; then
             run_sudo iptables -C OUTPUT -d "$temp_sh_ip" -j DROP 2>/dev/null || {
                 run_sudo iptables -A OUTPUT -d "$temp_sh_ip" -j DROP 2>/dev/null && \
@@ -2217,10 +2229,15 @@ HOSTSBLOCK'
     elif command_exists nft; then
         echo -e "  ${DIM}nftables verfügbar — C2-Blocking via nft...${NC}"
         local temp_sh_ip
-        temp_sh_ip=$(dig +short temp.sh A 2>/dev/null | head -1 || true)
+        temp_sh_ip=$(dig +short +time=5 temp.sh A 2>/dev/null | head -1 || true)
         if [[ -n "$temp_sh_ip" ]]; then
-            run_sudo nft add rule inet filter output ip daddr "$temp_sh_ip" drop 2>/dev/null || true
-            log_ok "nftables: $temp_sh_ip (temp.sh) blocked"
+            # Duplikat-Prüfung vor dem Hinzufügen
+            if ! run_sudo nft list ruleset 2>/dev/null | grep -q "ip daddr $temp_sh_ip drop"; then
+                run_sudo nft add rule inet filter output ip daddr "$temp_sh_ip" drop 2>/dev/null && \
+                    log_ok "nftables: $temp_sh_ip (temp.sh) blocked"
+            else
+                log_ok "nftables: $temp_sh_ip bereits geblockt"
+            fi
         fi
     fi
 
@@ -2268,8 +2285,8 @@ install_auditd_monitoring() {
 # arch-shield: File Integrity Monitoring Rules
 # Überwacht sensible Pfade auf Lese-/Schreibzugriffe
 
-# SSH Keys überwachen
--w /home/ -p wa -k arch-shield-home-access
+# SSH Keys überwachen (Syscall-basiert, da -w /home/ nur das Verzeichnis selbst überwacht)
+-a always,exit -F arch=b64 -S open,openat -F dir=/home -F uid!=0 -F auid>=1000 -F auid!=unset -F success=1 -k arch-shield-home-access
 -w /root/.ssh/ -p wa -k arch-shield-root-ssh
 
 # Systemd Units überwachen (Malware-Persistenz)
@@ -2294,10 +2311,9 @@ install_auditd_monitoring() {
 # Hosts-Datei überwachen (C2-Blocking könnte entfernt werden)
 -w /etc/hosts -p wa -k arch-shield-hosts
 
-# Kernel-Module Laden überwachen
--w /sbin/insmod -p x -k arch-shield-kernel-module
--w /sbin/modprobe -p x -k arch-shield-kernel-module
--w /sbin/rmmod -p x -k arch-shield-kernel-module
+# Kernel-Module Laden überwachen (Syscall-basiert, da /sbin Symlinks sind)
+-a always,exit -F arch=b64 -S init_module -S delete_module -k arch-shield-kernel-module
+-a always,exit -F arch=b32 -S init_module -S delete_module -k arch-shield-kernel-module
 AUDITRULES
 
     # Regeln installieren
@@ -2311,6 +2327,9 @@ AUDITRULES
         # Regeln neu laden
         run_sudo augenrules --load 2>/dev/null || run_sudo auditctl -R "$rules_file" 2>/dev/null || true
         log_ok "auditd Rules installiert — überwacht SSH, systemd, pacman, cron, sudo, hosts"
+
+        # Temp-Datei aufräumen
+        rm -f "$rules_file" 2>/dev/null || true
 
         # Status anzeigen
         local active_rules
@@ -2383,19 +2402,24 @@ echo "" >> "$LOG"
 RKCRON
         chmod +x "$cron_script"
 
-        # systemd Timer für wöchentlichen rkhunter scan
-        local rkh_service="$HOME/.config/systemd/user/rkhunter-weekly.service"
-        local rkh_timer="$HOME/.config/systemd/user/rkhunter-weekly.timer"
-        mkdir -p "$(dirname "$rkh_service")"
+        # systemd Timer für wöchentlichen rkhunter scan — als ROOT System Service
+        # (user service kann sudo nicht ohne TTY ausführen)
+        local rkh_service="/tmp/rkhunter-weekly.service"
+        local rkh_timer="/tmp/rkhunter-weekly.timer"
 
         cat > "$rkh_service" << 'SVC'
 [Unit]
 Description=Weekly rkhunter Rootkit Scan
+After=network-online.target
+Wants=network-online.target
 
 [Service]
 Type=oneshot
-ExecStart=%h/.local/share/arch-shield/rkhunter-weekly.sh
+ExecStart=/usr/bin/rkhunter --update --quiet
+ExecStart=/usr/bin/rkhunter --propupd --quiet
+ExecStart=/usr/bin/rkhunter --check --sk --report-warnings-only
 Nice=19
+IOSchedulingClass=idle
 SVC
 
         cat > "$rkh_timer" << 'TIMER'
@@ -2405,14 +2429,25 @@ Description=Run rkhunter weekly
 [Timer]
 OnCalendar=Sun 03:00
 Persistent=true
+RandomizedDelaySec=30min
 
 [Install]
 WantedBy=timers.target
 TIMER
 
-        systemctl --user daemon-reload 2>/dev/null || true
-        systemctl --user enable --now rkhunter-weekly.timer 2>/dev/null || true
-        log_ok "rkhunter wöchentlicher Timer aktiviert (Sonntag 03:00)"
+        if find_sudo; then
+            run_sudo cp "$rkh_service" /etc/systemd/system/rkhunter-weekly.service 2>/dev/null || true
+            run_sudo cp "$rkh_timer" /etc/systemd/system/rkhunter-weekly.timer 2>/dev/null || true
+            run_sudo systemctl daemon-reload 2>/dev/null || true
+            run_sudo systemctl enable --now rkhunter-weekly.timer 2>/dev/null || true
+            log_ok "rkhunter root-System-Service aktiviert (Sonntag 03:00)"
+        else
+            log_wrn "Kein sudo — rkhunter Timer muss manuell als root installiert werden"
+            echo -e "  sudo cp $rkh_service /etc/systemd/system/"
+            echo -e "  sudo cp $rkh_timer /etc/systemd/system/"
+            echo -e "  sudo systemctl daemon-reload"
+            echo -e "  sudo systemctl enable --now rkhunter-weekly.timer"
+        fi
     fi
 }
 
