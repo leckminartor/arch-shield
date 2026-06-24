@@ -1,114 +1,114 @@
-# 🔒 CachyOS / Arch Linux AUR-Schutzplan
-## Nach dem "Atomic Arch" Supply-Chain-Angriff vom Juni 2026
+# 🔒 CachyOS / Arch Linux AUR Protection Plan
+## Following the "Atomic Arch" Supply-Chain Attack (June 2026)
 
-> **Stand:** 23. Juni 2026  
+> **Date:** June 23, 2026  
 > **System:** CachyOS (Arch Linux), Kernel 7.0.12-1-cachyos  
-> **Status:** ✅ System ist CLEAN — keine Infektion gefunden
+> **Status:** ✅ System is CLEAN — no infection found
 
 ---
 
-## 📋 Was passiert ist — Der "Atomic Arch" Angriff
+## 📋 What Happened — The "Atomic Arch" Attack
 
-### Zusammenfassung
+### Summary
 
-Am **11. Juni 2026** wurde eine massiven Supply-Chain-Attacke auf das **Arch User Repository (AUR)** entdeckt. Angreifer haben **1.500–2.000 verwaiste (orphaned) AUR-Pakete** übernommen und deren `PKGBUILD`- und `.install`-Dateien mit Malware modifiziert.
+On **June 11, 2026**, a massive supply-chain attack on the **Arch User Repository (AUR)** was discovered. Attackers took over **1,500–2,000 orphaned AUR packages** and modified their `PKGBUILD` and `.install` files with malware.
 
-### Angriffsvektoren
+### Attack Vectors
 
-#### Welle 1: `atomic-lockfile` / `lockfile-js` (npm)
-1. Angreifer haben Identitäten legitimer Maintainer (z.B. `arojas`) via **Git-Commit-Fälschung** imitiert
-2. Verwaiste Pakete übernommen
-3. `npm install atomic-lockfile` oder `npm install lockfile-js` in `.install` und `.hook` Dateien injiziert
-4. Die npm-Pakete enthielten einen `preinstall`-Hook, der `./src/hooks/deps` ausführt
-5. `deps` ist ein **Rust-basierter Credential-Stealer** (ELF-Binary)
+#### Wave 1: `atomic-lockfile` / `lockfile-js` (npm)
+1. Attackers impersonated legitimate maintainers (e.g., `arojas`) via **Git commit spoofing**
+2. Took over orphaned packages
+3. Injected `npm install atomic-lockfile` or `npm install lockfile-js` into `.install` and `.hook` files
+4. The npm packages contained a `preinstall` hook that executes `./src/hooks/deps`
+5. `deps` is a **Rust-based credential stealer** (ELF binary)
 
-#### Welle 2: `js-digest` (bun)
-1. Zusätzliche Angreifer-Accounts (`custodiatovar`, `veramagalhaes`) übernahmen verwaiste Pakete
-2. `bun install js-digest` in PKGBUILD/`.install`-Dateien injiziert
-3. Gleicher npm-Publisher `herbsobering`
-4. Eingebetteter ELF-Payload mit gleicher Funktionalität
+#### Wave 2: `js-digest` (bun)
+1. Additional attacker accounts (`custodiatovar`, `veramagalhaes`) took over orphaned packages
+2. Injected `bun install js-digest` into PKGBUILD/`.install` files
+3. Same npm publisher `herbsobering`
+4. Embedded ELF payload with identical functionality
 
-### Malware-Fähigkeiten
+### Malware Capabilities
 
-| Fähigkeit | Details |
+| Capability | Details |
 |-----------|---------|
-| **Credential Theft** | Discord-Tokens, GitHub-PATs, npm-Tokens, Slack-Sessions, Teams/M365-Sessions, SSH-Keys, Vault-Tokens, Docker/Podman-Credentials, Browser-Cookies |
-| **Data Exfiltration** | Uploads zu `temp.sh`, C2 via Tor Onion Service |
-| **Persistenz** | systemd-Services (root oder user mode) mit `Restart=always` |
-| **eBPF Rootkit** | Wenn als root mit `CAP_BPF` ausgeführt: versteckt Prozesse, Dateien und Socket-Inodes |
-| **Cryptominer** | Referenzen auf `/usr/bin/monero-wallet-gui` |
+| **Credential Theft** | Discord tokens, GitHub PATs, npm tokens, Slack sessions, Teams/M365 sessions, SSH keys, Vault tokens, Docker/Podman credentials, browser cookies |
+| **Data Exfiltration** | Uploads to `temp.sh`, C2 via Tor Onion Service |
+| **Persistence** | systemd services (root or user mode) with `Restart=always` |
+| **eBPF Rootkit** | When running as root with `CAP_BPF`: hides processes, files, and socket inodes |
+| **Cryptominer** | References to `/usr/bin/monero-wallet-gui` |
 
-### Bekannte Angreifer-Accounts
+### Known Attacker Accounts
 - `krisztinavarga`, `franziskaweber`, `tobiaswesterburg`, `ellenmyklebust`
 - `custodiatovar`, `veramagalhaes`
-- `ivonahruskova` (Account 11. Jun erstellt, 16 Adoptionen)
-- `simongeisler` (3 Tage alt, 16 Adoptionen)
+- `ivonahruskova` (account created June 11, 16 adoptions)
+- `simongeisler` (3 days old, 16 adoptions)
 
-### Vorherige Vorfälle
-- **Juli 2018:** `xeactor` übernimmt `acroread` (PDF Viewer) mit Malware
-- **Juli 2025:** Gefälschte Browser-Pakete mit Remote Access Trojan (CHAOS RAT)
-- **August 2025:** Woche-langer DDoS-Angriff auf Arch Linux
+### Previous Incidents
+- **July 2018:** `xeactor` takes over `acroread` (PDF Viewer) with malware
+- **July 2025:** Fake browser packages with Remote Access Trojan (CHAOS RAT)
+- **August 2025:** Week-long DDoS attack on Arch Linux
 
 ---
 
-## ✅ Sofortmaßnahmen — Bereits durchgeführt
+## ✅ Immediate Actions — Already Completed
 
-### 1. System-Scan: CLEAN ✅
-- **aur-malware-check** (Community-Tool, 1935 bekannte infizierte Pakete): CLEAN
-- **aur-scan system** (118 Detektions-Regeln): Nur 1 False-Positive (google-chrome Cron-Rest mit Erklärungs-Befehl `rm -r`)
-- **eBPF Rootkit-Check:** Keine versteckten Maps
-- **npm/bun Cache-Check:** Keine Malware-Pakete
-- **systemd-Persistenz-Check:** Keine verdächtigen Services
-- **pacman.log-Historie:** Keine infizierten Installationen
+### 1. System Scan: CLEAN ✅
+- **aur-malware-check** (community tool, 1,935 known infected packages): CLEAN
+- **aur-scan system** (118 detection rules): Only 1 false positive (google-chrome cron job with explanatory `rm -r` command)
+- **eBPF Rootkit Check:** No hidden maps
+- **npm/bun Cache Check:** No malware packages
+- **systemd Persistence Check:** No suspicious services
+- **pacman.log History:** No infected installations
 
-### 2. Fish-Shell-Integration aktiviert ✅
-- `source /usr/share/aur-scan/integration.fish` in `~/.config/fish/config.fish` eingetragen
-- Scannt automatisch vor jedem `paru -S` / `paru -Syu` Befehl
-- Interaktiver Modus: fragt vor Installation bei Funden
+### 2. Fish Shell Integration Enabled ✅
+- `source /usr/share/aur-scan/integration.fish` added to `~/.config/fish/config.fish`
+- Automatically scans before every `paru -S` / `paru -Syu` command
+- Interactive mode: prompts before installation when threats are found
 
-### 3. Benutzer-IOC-Datenbank erstellt ✅
-- `~/.local/share/aur-scanner/ioc.toml` mit Atomic-Arch- und CHAOS-RAT-Kampagnen
+### 3. User IOC Database Created ✅
+- `~/.local/share/aur-scanner/ioc.toml` with Atomic-Arch and CHAOS-RAT campaigns
 
-### 4. Wöchentlicher systemd-Scan-Timer aktiviert ✅
+### 4. Weekly systemd Scan Timer Enabled ✅
 - Service: `aur-scan-weekly.service` (user-level)
-- Timer: `aur-scan-weekly.timer` — läuft jeden Montag
-- Führt `aur-scan system`, `aur-malware-check`, eBPF-Check, npm/bun-Cache-Check aus
+- Timer: `aur-scan-weekly.timer` — runs every Monday
+- Executes `aur-scan system`, `aur-malware-check`, eBPF check, npm/bun cache check
 - Log: `~/.local/share/aur-scanner/scan-log.txt`
 
-### 5. Sichere paru.conf erstellt ✅
-- `NewsOnUpgrade`: Zeigt Arch-News vor jedem Upgrade
-- `CombinedUpgrade`: Repo + AUR zusammen
-- `UpgradeMenu`: Pakete können abgewählt werden
-- `SaveChanges`: PKGBUILD-Änderungen werden gespeichert
-- `RemoveMake` / `CleanAfter`: Build-Umgebung wird bereinigt
+### 5. Secure paru.conf Created ✅
+- `NewsOnUpgrade`: Shows Arch news before every upgrade
+- `CombinedUpgrade`: Repo + AUR together
+- `UpgradeMenu`: Packages can be deselected
+- `SaveChanges`: PKGBUILD changes are saved
+- `RemoveMake` / `CleanAfter`: Build environment is cleaned up
 
 ---
 
-## ⚠️ Manuell durchzuführen (benötigt sudo)
+## ⚠️ Manual Actions Required (needs sudo)
 
-### 6. Pre-Install pacman-Hook installieren
+### 6. Install Pre-Install pacman Hook
 ```bash
 sudo cp /tmp/aur-scan-pre-install.hook /etc/pacman.d/hooks/aur-scan-pre-install.hook
 ```
 
-### 7. eBPF-Härtung aktivieren (CRITICAL — Rootkit-Schutz)
+### 7. Enable eBPF Hardening (CRITICAL — Rootkit Protection)
 ```bash
 sudo cp /tmp/99-arch-shield-ebpf.conf /etc/sysctl.d/99-arch-shield-ebpf.conf
 sudo sysctl -p /etc/sysctl.d/99-arch-shield-ebpf.conf
 ```
 
-### 8. CachyOS Repo absichern (CRITICAL — Supply-Chain-Schutz)
+### 8. Secure CachyOS Repo (CRITICAL — Supply-Chain Protection)
 ```bash
 sudo sed -i 's/SigLevel = Optional TrustAll/SigLevel = Required DatabaseOptional/' /etc/pacman.conf
 ```
 
-### 9. Build-Isolation aktivieren (CRITICAL — verhindert Credential-Diebstahl)
+### 9. Enable Build Isolation (CRITICAL — Prevents Credential Theft)
 ```bash
 sudo pacman -S devtools
 echo 'Chroot' >> ~/.config/paru/paru.conf
 ```
 
-### 7. (Optional) Sudo-Timeout verlängern für paru
+### (Optional) Extend sudo Timeout for paru
 ```bash
 # In /etc/sudoers.d/10-paru:
 # Defaults!/usr/bin/makepkg timestamp_timeout=30
@@ -116,102 +116,102 @@ echo 'Chroot' >> ~/.config/paru/paru.conf
 
 ---
 
-## 🛡️ Langfristige Schutzstrategie
+## 🛡️ Long-Term Protection Strategy
 
-### A. Allgemeine AUR-Regeln
+### A. General AUR Rules
 
-1. **PKGBUILD IMMER reviewen** — Lese jeden `PKGBUILD` und jede `.install`-Datei vor der Installation
+1. **ALWAYS review the PKGBUILD** — Read every `PKGBUILD` and every `.install` file before installation
    ```bash
-   paru -Si <paket>          # Info anzeigen
-   paru -Gp <paket>          # PKGBUILD anzeigen
+   paru -Si <package>          # Show info
+   paru -Gp <package>          # Show PKGBUILD
    ```
 
-2. **Maintainer prüfen** — Klicke im AUR auf den Maintainer-Namen. 
-   - Wie lange ist der Account alt?
-   - Wie viele Pakete pflegt er?
-   - ⚠️ Neu erstellte Accounts mit vielen Adoptionen = Red Flag
+2. **Check the maintainer** — Click the maintainer name on the AUR page.
+   - How old is the account?
+   - How many packages do they maintain?
+   - ⚠️ Newly created accounts with many adoptions = Red Flag
 
-3. **Verwaiste Pakete meiden** — `Flagged out-of-date` oder `Maintainer: orphan` sind Riskant
+3. **Avoid orphaned packages** — `Flagged out-of-date` or `Maintainer: orphan` are risky
 
-4. **Commits prüfen** — Auf der AUR-Seite unter "View Changes" die letzten Commits ansehen
+4. **Check commits** — Look at recent commits on the AUR page under "View Changes"
 
-5. **Beliebtheit prüfen** — Pakete mit 0-1 Votes und kürzlich übernommen sind verdächtig
+5. **Check popularity** — Packages with 0-1 votes that were recently adopted are suspicious
 
-### B. NPM/Node-Spezifisch
+### B. npm/Node-Specific
 
-Die Atomic-Arch-Malware wurde über npm `preinstall`-Hooks geladen:
-- ⚠️ **Niemals** `npm install` oder `bun install` in einem PKGBUILD ohne genauestes Verständnis
-- Auf folgende Patterns achten:
+The Atomic-Arch malware was loaded via npm `preinstall` hooks:
+- ⚠️ **NEVER** run `npm install` or `bun install` in a PKGBUILD without thorough understanding
+- Watch for these patterns:
   ```
   npm install atomic-lockfile     # MALWARE
   npm install lockfile-js         # MALWARE
   bun install js-digest           # MALWARE
-  npm install <unbekanntes-paket> # VERDÄCHTIG
+  npm install <unknown-package>   # SUSPICIOUS
   ```
 
-### C. System-Härtung
+### C. System Hardening
 
-1. **pacman SigLevel strikt halten:**
+1. **Keep pacman SigLevel strict:**
    ```ini
    SigLevel = Required DatabaseOptional
    ```
-   Die `[cachyos]` Repo hat derzeit `SigLevel = Optional TrustAll` — das ist vom CachyOS-Team so vorgesehen, aber bei Bedarf kannst du es auf `Required` setzen.
+   The `[cachyos]` repo currently uses `SigLevel = Optional TrustAll` — this is intended by the CachyOS team, but you can set it to `Required` if desired.
 
-2. **eBPF-Module einschränken (falls möglich):**
+2. **Restrict eBPF module (if possible):**
    ```bash
    # In /etc/sysctl.d/99-ebpf-hardening.conf:
    kernel.unprivileged_bpf_disabled = 1
    ```
-   Das verhindert, dass nicht-root User eBPF-Programme laden (Rootkit-Schutz)
+   This prevents non-root users from loading eBPF programs (rootkit protection)
 
-3. **Kernel lockdown (für maximale Sicherheit):**
+3. **Kernel lockdown (for maximum security):**
    ```bash
-   # Kernel-Parameter: lockdown=confidentiality
+   # Kernel parameter: lockdown=confidentiality
    ```
 
-### D. Regelmäßige Überprüfung
+### D. Regular Auditing
 
-1. **Wöchentlicher Scan** — Läuft automatisch via systemd timer ✅
-2. **Arch-News abonnieren** — https://archlinux.org/news/ RSS feed
-3. **aur-general Mailingliste beobachten** — https://lists.archlinux.org/
-4. **aur-malware-check Repository** — Regelmäßig updaten:
+1. **Weekly scan** — Runs automatically via systemd timer ✅
+2. **Subscribe to Arch news** — https://archlinux.org/news/ RSS feed
+3. **Monitor aur-general mailing list** — https://lists.archlinux.org/
+4. **aur-malware-check repository** — Update regularly:
    ```bash
    cd /tmp/aur-malware-check && git pull
    ```
 
-### E. Notfall-Plan (falls infiziert)
+### E. Emergency Plan (if infected)
 
-1. **System NICHT ausschalten** — Erst forensische Erfassung mit vertrauenswürdigen Medien
-2. **ALLE Credentials rotieren:**
-   - Discord, GitHub, npm, Slack, Teams, SSH-Keys
-   - Vault-Tokens, Cloud-Provider-Keys, Browser-Cookies
-3. **Persistenz prüfen:**
+1. **Do NOT shut down the system** — First capture forensic evidence with trusted media
+2. **Rotate ALL credentials:**
+   - Discord, GitHub, npm, Slack, Teams, SSH keys
+   - Vault tokens, cloud provider keys, browser cookies
+3. **Check persistence:**
    ```bash
    systemctl list-units --type=service --state=running
    ls -la /sys/fs/bpf/hidden_*
    ```
-4. **Mit vertrauenswürdigen Medien bereinigen** — Arch ISO booten, Filesystem mounten, maliziöse systemd-Units entfernen
-5. **Neuinstallation in Betracht ziehen** — eBPF-Rootkit macht System als nicht vertrauenswürdig
+4. **Clean with trusted media** — Boot Arch ISO, mount filesystem, remove malicious systemd units
+5. **Consider reinstalling** — eBPF rootkit makes the system untrustworthy
 
 ---
 
-## 🔧 Installierte Schutzmaßnahmen — Übersicht
+## 🔧 Installed Protection Measures — Overview
 
-| Komponente | Status | Ort |
-|------------|--------|-----|
-| **aur-scanner** (v2.0.0) | ✅ Installiert | `/usr/bin/aur-scan` |
-| **aur-malware-check** (v4.0) | ✅ Installiert | `/tmp/aur-malware-check/` |
-| **Fish-Shell-Integration** | ✅ Aktiviert | `~/.config/fish/config.fish` |
-| **Pre-Install pacman-Hook** | ⚠️ Manuell nötig | `/etc/pacman.d/hooks/aur-scan-pre-install.hook` |
-| **Post-Install pacman-Hook** | ✅ Bereits aktiv | `/etc/pacman.d/hooks/aur-shield-after-install.hook` |
-| **Wöchentlicher systemd Timer** | ✅ Aktiviert | `~/.config/systemd/user/aur-scan-weekly.timer` |
-| **IOC-Datenbank** | ✅ Erstellt | `~/.local/share/aur-scanner/ioc.toml` |
-| **Sichere paru.conf** | ✅ Aktiviert | `~/.config/paru/paru.conf` |
-| **Scan-Log** | ✅ Wird geführt | `~/.local/share/aur-scanner/scan-log.txt` |
+| Component | Status | Location |
+|-----------|--------|----------|
+| **aur-scanner** (v2.0.0) | ✅ Installed | `/usr/bin/aur-scan` |
+| **aur-malware-check** (v4.0) | ✅ Installed | `/tmp/aur-malware-check/` |
+| **Fish Shell Integration** | ✅ Enabled | `~/.config/fish/config.fish` |
+| **Pre-Install pacman Hook** | ⚠️ Manual required | `/etc/pacman.d/hooks/aur-scan-pre-install.hook` |
+| **Post-Install pacman Hook** | ✅ Already active | `/etc/pacman.d/hooks/aur-shield-after-install.hook` |
+| **Weekly systemd Timer** | ✅ Enabled | `~/.config/systemd/user/aur-scan-weekly.timer` |
+| **IOC Database** | ✅ Created | `~/.local/share/aur-scanner/ioc.toml` |
+| **Secure paru.conf** | ✅ Active | `~/.config/paru/paru.conf` |
+| **Scan Log** | ✅ Maintained | `~/.local/share/aur-scanner/scan-log.txt` |
 
 ---
 
-## 📚 Quellen
+## 📚 Sources
 
 - [Arch Linux Official Advisory](https://archlinux.org/news/active-aur-malicious-packages-incident/)
 - [BleepingComputer Report](https://www.bleepingcomputer.com/news/security/over-400-arch-linux-packages-compromised-to-push-rootkit-infostealer/)
@@ -227,8 +227,8 @@ Die Atomic-Arch-Malware wurde über npm `preinstall`-Hooks geladen:
 
 ---
 
-## 📝 Sicherheitshinweis
+## 📝 Security Notice
 
-> ⚠️ **Das AUR ist ein unofficial, user-produced, unvetted Repository.**  
-> Die einzige sichere Nutzung des AUR ist die **Überprüfung jeder einzelnen Zeile** in `PKGBUILD` und `.install`-Dateien vor der Installation.  
-> — Arch Linux Team, Juni 2026
+> ⚠️ **The AUR is an unofficial, user-produced, unvetted repository.**
+> The only safe way to use the AUR is to **review every single line** in `PKGBUILD` and `.install` files before installation.
+> — Arch Linux Team, June 2026
