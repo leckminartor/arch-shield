@@ -1,0 +1,53 @@
+name: 🔔 False Positive Report
+description: Report a legitimate package that was incorrectly flagged as malicious
+title: "[FALSE POSITIVE] "
+labels: ["false-positive"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting a false positive! This helps improve detection accuracy for everyone.
+  
+  - type: input
+    id: package
+    attributes:
+      label: Package name
+      description: The AUR package that was incorrectly flagged
+      placeholder: e.g., atomic-lockfile (but actually legitimate)
+    validations:
+      required: true
+  
+  - type: input
+    id: aur-url
+    attributes:
+      label: AUR URL
+      description: Link to the package on AUR
+      placeholder: https://aur.archlinux.org/packages/...
+    validations:
+      required: true
+  
+  - type: textarea
+    id: rules
+    attributes:
+      label: Triggered rules
+      description: Which detection rules triggered? (from `./arch-shield.sh check <package>` output)
+      render: shell
+    validations:
+      required: true
+  
+  - type: textarea
+    id: pkgbuild
+    attributes:
+      label: PKGBUILD excerpt
+      description: The part of the PKGBUILD that triggered the rule
+      render: bash
+    validations:
+      required: true
+  
+  - type: textarea
+    id: explanation
+    attributes:
+      label: Why is this a false positive?
+      description: Explain why this package is legitimate and should not be flagged
+    validations:
+      required: true

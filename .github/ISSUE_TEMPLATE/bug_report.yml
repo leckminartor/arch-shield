@@ -1,0 +1,82 @@
+name: 🐛 Bug Report
+description: Report a bug or unexpected behavior in arch-shield
+title: "[BUG] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a bug! Please fill out the information below.
+        
+        ⚠️ For false positive reports, please use the "False Positive Report" template instead.
+  
+  - type: input
+    id: distribution
+    attributes:
+      label: Distribution
+      description: Which Arch-based distribution are you using?
+      placeholder: e.g., Arch Linux, CachyOS, EndeavourOS, Manjaro, Garuda, Artix
+    validations:
+      required: true
+  
+  - type: input
+    id: aur-helper
+    attributes:
+      label: AUR Helper
+      description: Which AUR helper do you use?
+      placeholder: e.g., paru, yay, pikaur, trizen, none
+    validations:
+      required: true
+  
+  - type: input
+    id: shell
+    attributes:
+      label: Shell
+      description: Which shell are you using?
+      placeholder: e.g., bash, zsh, fish, nu
+    validations:
+      required: true
+  
+  - type: input
+    id: version
+    attributes:
+      label: arch-shield Version
+      description: Run `./arch-shield.sh help` to see the version
+      placeholder: e.g., v1.4.3
+    validations:
+      required: true
+  
+  - type: textarea
+    id: command
+    attributes:
+      label: Command that failed
+      description: Which command did you run?
+      placeholder: e.g., `./arch-shield.sh scan` or `./arch-shield.sh all`
+    validations:
+      required: true
+  
+  - type: textarea
+    id: error
+    attributes:
+      label: Error output
+      description: Paste the full error output here
+      render: shell
+    validations:
+      required: true
+  
+  - type: textarea
+    id: dry-run
+    attributes:
+      label: Dry-run output (if applicable)
+      description: Output of `./arch-shield.sh --dry-run all`
+      render: shell
+    validations:
+      required: false
+  
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Any other relevant information
+    validations:
+      required: false
