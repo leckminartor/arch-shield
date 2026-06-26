@@ -6,6 +6,27 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ---
 
+## [1.4.4] — 2026-06-26
+
+### Fixed
+- **Critical**: Pre-Install Hook broke `cachy-update` when paru builds AUR packages in aurbuild chroot
+- Hook had `AbortOnFail` but no binary existence check — `call to execv failed` in chroot
+- Fix: `/bin/sh -c` wrapper gracefully skips hook when `aur-scan-hook` binary is absent
+- `AbortOnFail` preserved on host — malware detection still blocks transactions
+
+### Changed
+- `install_pacman_pre_hook()`: validates hook content (not just existence) before skipping — auto-updates outdated hooks
+- `install_pacman_post_hook()`: same content validation
+- `show_status()`: shows ⚠ warning for outdated hooks
+
+### Verified
+- Live test: `cachy-update` + `paru -S google-chrome` working
+- Chroot test: `mkarchroot` installs 152 packages without abort
+- Dual LLM review: both APPROVED (qwen3-coder + deepseek)
+- Pacman source code analysis: `alpm_wordsplit()` correctly handles single-quotes
+
+---
+
 ## [1.4.3] — 2026-06-23
 
 ### Fixed
@@ -59,6 +80,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 | 1.0.0 | 2026-06-22 | Initial release: System scan, 6-layer detection |
 | 1.3.0 | 2026-06-23 | Protection, hardening, emergency recovery, threat-intel updates |
 | 1.4.3 | 2026-06-23 | Code review fixes (qwen3-coder + deepseek-v4-pro) |
+| 1.4.4 | 2026-06-26 | Pre-Install Hook chroot fix (/bin/sh -c wrapper) |
 
 ---
 
