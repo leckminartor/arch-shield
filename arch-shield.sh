@@ -501,8 +501,12 @@ install_pacman_pre_hook() {
     local hook_file="/etc/pacman.d/hooks/aur-scan-pre-install.hook"
 
     if [[ -f "$hook_file" ]]; then
-        log_ok "Pre-Install Hook bereits vorhanden: $hook_file"
-        return 0
+        if grep -q 'command -v /usr/bin/aur-scan-hook' "$hook_file" 2>/dev/null; then
+            log_ok "Pre-Install Hook bereits vorhanden und aktuell: $hook_file"
+            return 0
+        else
+            log_wrn "Pre-Install Hook ist veraltet (fehlt Binary-Existenz-Check) — aktualisiere..."
+        fi
     fi
 
     [[ "$DRY_RUN" == "true" ]] && {
@@ -524,7 +528,7 @@ Target = *
 [Action]
 Description = AUR Shield: Pre-install security scan
 When = PreTransaction
-Exec = /usr/bin/aur-scan-hook
+Exec = /bin/sh -c 'command -v /usr/bin/aur-scan-hook >/dev/null 2>&1 || exit 0; exec /usr/bin/aur-scan-hook'
 AbortOnFail
 NeedsTargets
 EOF"
@@ -548,7 +552,7 @@ Target = *
 [Action]
 Description = AUR Shield: Pre-install security scan (blocks malicious packages)
 When = PreTransaction
-Exec = /usr/bin/aur-scan-hook
+Exec = /bin/sh -c 'command -v /usr/bin/aur-scan-hook >/dev/null 2>&1 || exit 0; exec /usr/bin/aur-scan-hook'
 AbortOnFail
 NeedsTargets
 HOOK
@@ -560,8 +564,12 @@ install_pacman_post_hook() {
     local hook_file="/etc/pacman.d/hooks/aur-shield-after-install.hook"
 
     if [[ -f "$hook_file" ]]; then
-        log_ok "Post-Install Hook bereits vorhanden: $hook_file"
-        return 0
+        if grep -q '^Depends = aur-scanner$' "$hook_file" 2>/dev/null; then
+            log_ok "Post-Install Hook bereits vorhanden und aktuell: $hook_file"
+            return 0
+        else
+            log_wrn "Post-Install Hook ist veraltet (fehlendes Depends = aur-scanner) — aktualisiere..."
+        fi
     fi
 
     [[ "$DRY_RUN" == "true" ]] && {
@@ -1044,7 +1052,11 @@ show_status() {
 
     # Pre-Install Hook
     if [[ -f /etc/pacman.d/hooks/aur-scan-pre-install.hook ]]; then
-        echo -e "  ${GREEN}✓${NC} Pre-Install Hook       aktiv (blockt Malware vor Installation)"
+        if grep -q 'command -v /usr/bin/aur-scan-hook' /etc/pacman.d/hooks/aur-scan-pre-install.hook 2>/dev/null; then
+            echo -e "  ${GREEN}✓${NC} Pre-Install Hook       aktiv (blockt Malware vor Installation)"
+        else
+            echo -e "  ${YELLOW}⚠${NC} Pre-Install Hook       veraltet (fehlt Binary-Existenz-Check)"
+        fi
         installed=$((installed + 1))
     else
         echo -e "  ${RED}✗${NC} Pre-Install Hook       nicht installiert"
@@ -1053,7 +1065,11 @@ show_status() {
 
     # Post-Install Hook
     if [[ -f /etc/pacman.d/hooks/aur-shield-after-install.hook ]]; then
-        echo -e "  ${GREEN}✓${NC} Post-Install Hook      aktiv"
+        if grep -q '^Depends = aur-scanner$' /etc/pacman.d/hooks/aur-shield-after-install.hook 2>/dev/null; then
+            echo -e "  ${GREEN}✓${NC} Post-Install Hook      aktiv"
+        else
+            echo -e "  ${YELLOW}⚠${NC} Post-Install Hook      veraltet (fehlendes Depends = aur-scanner)"
+        fi
         installed=$((installed + 1))
     else
         echo -e "  ${RED}✗${NC} Post-Install Hook      nicht installiert"
