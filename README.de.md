@@ -4,6 +4,15 @@
 
 > Reaktion auf den [Atomic-Arch Supply-Chain-Angriff vom Juni 2026](https://archlinux.org/news/active-aur-malicious-packages-incident/), bei dem 1.500+ AUR-Pakete mit Credential-Stealer und eBPF-Rootkit kompromittiert wurden.
 
+[![License](https://img.shields.io/badge/license-GPL--3.0-blue.svg)](LICENSE)
+[![Bash](https://img.shields.io/badge/bash-4%2B-green.svg)](https://www.gnu.org/software/bash/)
+[![Arch Linux](https://img.shields.io/badge/Arch%20Linux-supported-blue.svg)](https://archlinux.org)
+[![Version](https://img.shields.io/badge/version-1.4.4-green.svg)](https://github.com/leckminartor/arch-shield/releases)
+
+**[Deutsch](README.de.md)** | **[English](README.md)**
+
+---
+
 ## Kompatible Distributionen
 
 Arch Linux · CachyOS · EndeavourOS · Manjaro · Garuda Linux · Artix Linux · und alle Arch-basierten Distributionen
@@ -22,6 +31,9 @@ chmod +x arch-shield.sh
 
 # Oder direkt: Alles (Scan + Schutz + Härtung)
 ./arch-shield.sh all
+
+# Trockenlauf (nichts wird geändert)
+./arch-shield.sh --dry-run all
 ```
 
 ## Funktionen
@@ -121,7 +133,7 @@ Es wurde in einer Distrobox Arch-Container-Umgebung getestet (Scan, Notfall-Bere
 
 Dieses Projekt wird freiwillig und ohne Gewähr bereitgestellt.
 
-**Es wird KEINERLEI Haftung übernommen** — weder für direkte noch indirekte Schäden, Datenverlust, Systemausfälle oder Sicherheitsvorfälle, die aus der Nutzung dieses Scripts resultieren könnten.
+**Es wird KEINERLEI Haftung übernommen** — weder für direkte noch indirekte Schäden, Datenverlust, Systemausfälle oder Sicherheitsvorfälle, die aus der Nutzung dieses Scripts resultieren.
 
 - ❌ **Keine Garantie** auf 100% Schutz vor allen Bedrohungen
 - ❌ **Keine Garantie** auf fehlerfreie Funktion in jeder Umgebung
@@ -130,7 +142,7 @@ Dieses Projekt wird freiwillig und ohne Gewähr bereitgestellt.
 
 **Die Nutzung erfolgt ausschließlich auf eigene Gefahr.**
 
-Dieses Script ist eine Ergänzung zu — kein Ersatz für — eigene Sorgfalt, manuelle PKGBUILD-Reviews und bewährte Security-Practices. Das AUR ist ein inoffizielles, von der Community erstelltes Repository. Die einzige sichere Nutzung erfordert die Überprüfung jeder Zeile in `PKGBUILD` und `.install`-Dateien vor der Installation.
+Dieses Script ist eine Ergänzung zu — kein Ersatz für — eigene Sorgfalt, manuelle PKGBUILD-Reviews und bewährte Security-Practices. Das AUR ist ein inoffizielles, von der Community erstelltes Repository. Für jedes Paket gilt: **PKGBUILD lesen, Maintainer prüfen, verstehen was du installierst.**
 
 ## Spenden
 
