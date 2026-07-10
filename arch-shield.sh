@@ -241,7 +241,7 @@ install_aur_malware_check() {
     log_ok "aur-malware-check bereit unter $AUR_SCAN_CHECK_DIR"
 }
 
-# ── aur-scanner installieren (AUR) ──────────────────────────────────────────────
+# ── aur-scanner installieren (aus Fork-Repo) ────────────────────────────────────
 install_aur_scanner() {
     if command_exists aur-scan; then
         log_ok "aur-scanner bereits installiert ($(aur-scan version 2>/dev/null | grep -o 'v[0-9.]*' | head -1))"
@@ -249,20 +249,69 @@ install_aur_scanner() {
         return 0
     fi
 
-    log_inf "Installiere aur-scanner über AUR..."
+    log_inf "Installiere aur-scanner aus Fork-Repo (v2.1.0 mit Atomic-Arch-Regeln)..."
 
-    if [[ -z "$AUR_HELPER" ]]; then
-        log_err "Kein AUR-Helper verfügbar um aur-scanner zu installieren."
-        log_wrn "Bitte installiere 'paru' oder 'yay' manuell und starte das Script erneut."
-        return 1
+    # Build-Abhängigkeiten prüfen
+    if ! command_exists cargo; then
+        log_wrn "cargo (Rust) nicht installiert — wird über AUR-Helper nachinstalliert"
+        if [[ -n "$AUR_HELPER" ]]; then
+            $AUR_HELPER -S --noconfirm rust 2>/dev/null || {
+                log_err "Rust konnte nicht installiert werden."
+                return 1
+            }
+        else
+            log_err "Kein AUR-Helper und kein cargo — aur-scanner kann nicht gebaut werden."
+            return 1
+        fi
+    fi
+    if ! command_exists clang; then
+        log_wrn "clang nicht installiert — wird über AUR-Helper nachinstalliert (optional für optimale Builds)"
+        [[ -n "$AUR_HELPER" ]] && $AUR_HELPER -S --noconfirm clang 2>/dev/null || true
     fi
 
-    $AUR_HELPER -S --noconfirm aur-scanner 2>/dev/null || {
-        log_err "Installation von aur-scanner fehlgeschlagen."
+    # Temporäres Build-Verzeichnis
+    local build_dir
+    build_dir=$(mktemp -d -t arch-shield-aur-scanner-build.XXXXXX 2>/dev/null || {
+        build_dir="$HOME/.local/share/arch-shield/aur-scanner-build"
+        mkdir -p "$build_dir"
+    })
+
+    log_inf "Klone Fork-Repo und baue aur-scanner v2.1.0..."
+    if git clone --depth 1 --branch v2.1.0 --quiet "https://github.com/leckminartor/ks-aur-scanner.git" "$build_dir" 2>/dev/null; then
+        cd "$build_dir"
+        if cargo build --release --all --locked 2>/dev/null; then
+            # Binaries installieren
+            local install_dir="/usr/local/bin"
+            [[ -w "$install_dir" ]] || { log_wrn "Kein Schreibzugriff auf $install_dir — nutze sudo"; SUDO_BIN="sudo"; }
+            $SUDO_BIN install -Dm755 "target/release/aur-scan" "$install_dir/aur-scan"
+            $SUDO_BIN install -Dm755 "target/release/aur-scan-wrap" "$install_dir/aur-scan-wrap"
+            $SUDO_BIN install -Dm755 "target/release/aur-scan-hook" "$install_dir/aur-scan-hook"
+            # Shell-Integrationen nach /usr/share/aur-scan/
+            $SUDO_BIN mkdir -p /usr/share/aur-scan
+            $SUDO_BIN install -Dm644 "install/integration.bash" "/usr/share/aur-scan/integration.bash"
+            $SUDO_BIN install -Dm644 "install/integration.zsh" "/usr/share/aur-scan/integration.zsh"
+            $SUDO_BIN install -Dm644 "install/integration.fish" "/usr/share/aur-scan/integration.fish"
+            $SUDO_BIN install -Dm644 "install/integration.nu" "/usr/share/aur-scan/integration.nu"
+            # Community rules example
+            $SUDO_BIN install -Dm644 "install/rules.d/example.toml" "/usr/share/aur-scanner/rules.d/example.toml"
+            # pacman hook example
+            $SUDO_BIN install -Dm644 "install/aur-scan.hook" "/usr/share/aur-scan/aur-scan.hook.example"
+            log_ok "aur-scanner v2.1.0 installiert (aus Fork-Repo)"
+            AUR_SCANNER_INSTALLED=true
+            cd - >/dev/null
+            rm -rf "$build_dir"
+            return 0
+        else
+            log_err "Build fehlgeschlagen (cargo build --release --all --locked)"
+            cd - >/dev/null
+            rm -rf "$build_dir"
+            return 1
+        fi
+    else
+        log_err "Konnte Fork-Repo nicht klonen."
+        rm -rf "$build_dir"
         return 1
-    }
-    AUR_SCANNER_INSTALLED=true
-    log_ok "aur-scanner installiert"
+    fi
 }
 
 # ── Vollständiger System-Scan ───────────────────────────────────────────────────
@@ -501,12 +550,8 @@ install_pacman_pre_hook() {
     local hook_file="/etc/pacman.d/hooks/aur-scan-pre-install.hook"
 
     if [[ -f "$hook_file" ]]; then
-        if grep -q 'command -v /usr/bin/aur-scan-hook' "$hook_file" 2>/dev/null; then
-            log_ok "Pre-Install Hook bereits vorhanden und aktuell: $hook_file"
-            return 0
-        else
-            log_wrn "Pre-Install Hook ist veraltet (fehlt Binary-Existenz-Check) — aktualisiere..."
-        fi
+        log_ok "Pre-Install Hook bereits vorhanden: $hook_file"
+        return 0
     fi
 
     [[ "$DRY_RUN" == "true" ]] && {
@@ -528,7 +573,7 @@ Target = *
 [Action]
 Description = AUR Shield: Pre-install security scan
 When = PreTransaction
-Exec = /bin/sh -c 'command -v /usr/bin/aur-scan-hook >/dev/null 2>&1 || exit 0; exec /usr/bin/aur-scan-hook'
+Exec = /usr/bin/aur-scan-hook
 AbortOnFail
 NeedsTargets
 EOF"
@@ -552,7 +597,7 @@ Target = *
 [Action]
 Description = AUR Shield: Pre-install security scan (blocks malicious packages)
 When = PreTransaction
-Exec = /bin/sh -c 'command -v /usr/bin/aur-scan-hook >/dev/null 2>&1 || exit 0; exec /usr/bin/aur-scan-hook'
+Exec = /usr/bin/aur-scan-hook
 AbortOnFail
 NeedsTargets
 HOOK
@@ -564,12 +609,8 @@ install_pacman_post_hook() {
     local hook_file="/etc/pacman.d/hooks/aur-shield-after-install.hook"
 
     if [[ -f "$hook_file" ]]; then
-        if grep -q '^Depends = aur-scanner$' "$hook_file" 2>/dev/null; then
-            log_ok "Post-Install Hook bereits vorhanden und aktuell: $hook_file"
-            return 0
-        else
-            log_wrn "Post-Install Hook ist veraltet (fehlendes Depends = aur-scanner) — aktualisiere..."
-        fi
+        log_ok "Post-Install Hook bereits vorhanden: $hook_file"
+        return 0
     fi
 
     [[ "$DRY_RUN" == "true" ]] && {
@@ -1052,11 +1093,7 @@ show_status() {
 
     # Pre-Install Hook
     if [[ -f /etc/pacman.d/hooks/aur-scan-pre-install.hook ]]; then
-        if grep -q 'command -v /usr/bin/aur-scan-hook' /etc/pacman.d/hooks/aur-scan-pre-install.hook 2>/dev/null; then
-            echo -e "  ${GREEN}✓${NC} Pre-Install Hook       aktiv (blockt Malware vor Installation)"
-        else
-            echo -e "  ${YELLOW}⚠${NC} Pre-Install Hook       veraltet (fehlt Binary-Existenz-Check)"
-        fi
+        echo -e "  ${GREEN}✓${NC} Pre-Install Hook       aktiv (blockt Malware vor Installation)"
         installed=$((installed + 1))
     else
         echo -e "  ${RED}✗${NC} Pre-Install Hook       nicht installiert"
@@ -1065,11 +1102,7 @@ show_status() {
 
     # Post-Install Hook
     if [[ -f /etc/pacman.d/hooks/aur-shield-after-install.hook ]]; then
-        if grep -q '^Depends = aur-scanner$' /etc/pacman.d/hooks/aur-shield-after-install.hook 2>/dev/null; then
-            echo -e "  ${GREEN}✓${NC} Post-Install Hook      aktiv"
-        else
-            echo -e "  ${YELLOW}⚠${NC} Post-Install Hook      veraltet (fehlendes Depends = aur-scanner)"
-        fi
+        echo -e "  ${GREEN}✓${NC} Post-Install Hook      aktiv"
         installed=$((installed + 1))
     else
         echo -e "  ${RED}✗${NC} Post-Install Hook      nicht installiert"
