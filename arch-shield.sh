@@ -251,12 +251,23 @@ install_aur_scanner() {
 
     log_inf "Installiere aur-scanner aus Fork-Repo (v2.1.0 mit Atomic-Arch-Regeln)..."
 
-    # Build-Abhängigkeiten prüfen
+    # SUDO/doas Kommando ermitteln (nicht mit "sudo" überschreiben!)
+    if [[ -z "$SUDO_BIN" ]]; then
+        find_sudo || { log_err "Kein sudo/doas gefunden."; return 1; }
+    fi
+
+    # Build-Abhängigkeiten prüfen & nachinstallieren
     if ! command_exists cargo; then
-        log_wrn "cargo (Rust) nicht installiert — wird über AUR-Helper nachinstalliert"
+        log_wrn "cargo (Rust) nicht installiert — versuche über AUR-Helper nachzuinstallieren"
         if [[ -n "$AUR_HELPER" ]]; then
-            $AUR_HELPER -S --noconfirm rust 2>/dev/null || {
-                log_err "Rust konnte nicht installiert werden."
+            # Distro-spezifischer Package-Name
+            local rust_pkg="rust"
+            case "$DISTRO_ID" in
+                manjaro) rust_pkg="rustup" ;;
+                *)       rust_pkg="rust" ;;
+            esac
+            $AUR_HELPER -S --noconfirm "$rust_pkg" 2>&1 | tail -5 || {
+                log_err "Rust ($rust_pkg) konnte nicht installiert werden."
                 return 1
             }
         else
@@ -265,51 +276,57 @@ install_aur_scanner() {
         fi
     fi
     if ! command_exists clang; then
-        log_wrn "clang nicht installiert — wird über AUR-Helper nachinstalliert (optional für optimale Builds)"
-        [[ -n "$AUR_HELPER" ]] && $AUR_HELPER -S --noconfirm clang 2>/dev/null || true
+        log_wrn "clang nicht installiert — optional für optimale Builds"
+        [[ -n "$AUR_HELPER" ]] && $AUR_HELPER -S --noconfirm clang 2>&1 | tail -3 || true
     fi
 
-    # Temporäres Build-Verzeichnis
+    # Temporäres Build-Verzeichnis (atomic, keine Race-Condition)
     local build_dir
-    build_dir=$(mktemp -d -t arch-shield-aur-scanner-build.XXXXXX 2>/dev/null || {
-        build_dir="$HOME/.local/share/arch-shield/aur-scanner-build"
-        mkdir -p "$build_dir"
-    })
+    build_dir=$(mktemp -d -t "arch-shield-aur-scanner-build.XXXXXX") || {
+        log_err "Konnte temporäres Build-Verzeichnis nicht erstellen."
+        return 1
+    }
+    # Cleanup bei Exit/Signal
+    trap 'rm -rf "$build_dir"' RETURN
 
     log_inf "Klone Fork-Repo und baue aur-scanner v2.1.0..."
     if git clone --depth 1 --branch v2.1.0 --quiet "https://github.com/leckminartor/ks-aur-scanner.git" "$build_dir" 2>/dev/null; then
-        cd "$build_dir"
-        if cargo build --release --all --locked 2>/dev/null; then
+        cd "$build_dir" || { log_err "cd in Build-Dir fehlgeschlagen"; return 1; }
+
+        # --locked nur wenn Cargo.lock existiert, --workspace statt deprecated --all
+        local cargo_locked=""
+        [[ -f Cargo.lock ]] && cargo_locked="--locked"
+        if cargo build --release --workspace $cargo_locked 2>/dev/null; then
             # Binaries installieren
             local install_dir="/usr/local/bin"
-            [[ -w "$install_dir" ]] || { log_wrn "Kein Schreibzugriff auf $install_dir — nutze sudo"; SUDO_BIN="sudo"; }
-            $SUDO_BIN install -Dm755 "target/release/aur-scan" "$install_dir/aur-scan"
+            $SUDO_BIN install -Dm755 "target/release/aur-scan"     "$install_dir/aur-scan"
             $SUDO_BIN install -Dm755 "target/release/aur-scan-wrap" "$install_dir/aur-scan-wrap"
             $SUDO_BIN install -Dm755 "target/release/aur-scan-hook" "$install_dir/aur-scan-hook"
-            # Shell-Integrationen nach /usr/share/aur-scan/
+
+            # Shell-Integrationen nach /usr/share/aur-scan/ (KONSISTENTER Name!)
             $SUDO_BIN mkdir -p /usr/share/aur-scan
             $SUDO_BIN install -Dm644 "install/integration.bash" "/usr/share/aur-scan/integration.bash"
-            $SUDO_BIN install -Dm644 "install/integration.zsh" "/usr/share/aur-scan/integration.zsh"
+            $SUDO_BIN install -Dm644 "install/integration.zsh"  "/usr/share/aur-scan/integration.zsh"
             $SUDO_BIN install -Dm644 "install/integration.fish" "/usr/share/aur-scan/integration.fish"
-            $SUDO_BIN install -Dm644 "install/integration.nu" "/usr/share/aur-scan/integration.nu"
-            # Community rules example
-            $SUDO_BIN install -Dm644 "install/rules.d/example.toml" "/usr/share/aur-scanner/rules.d/example.toml"
+            $SUDO_BIN install -Dm644 "install/integration.nu"   "/usr/share/aur-scan/integration.nu"
+
+            # Community rules example (PFAD korrigiert: aur-scan NICHT aur-scanner!)
+            $SUDO_BIN install -Dm644 "install/rules.d/example.toml" "/usr/share/aur-scan/rules.d/example.toml"
+
             # pacman hook example
             $SUDO_BIN install -Dm644 "install/aur-scan.hook" "/usr/share/aur-scan/aur-scan.hook.example"
+
             log_ok "aur-scanner v2.1.0 installiert (aus Fork-Repo)"
             AUR_SCANNER_INSTALLED=true
             cd - >/dev/null
-            rm -rf "$build_dir"
             return 0
         else
-            log_err "Build fehlgeschlagen (cargo build --release --all --locked)"
+            log_err "Build fehlgeschlagen (cargo build --release --workspace)"
             cd - >/dev/null
-            rm -rf "$build_dir"
             return 1
         fi
     else
         log_err "Konnte Fork-Repo nicht klonen."
-        rm -rf "$build_dir"
         return 1
     fi
 }
