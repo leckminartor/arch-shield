@@ -19,26 +19,34 @@ infostealer/RAT/SSH-worm from a `.onion` C2, and launches it via
 over Tor disguised as `argv[0]=dbus-daemon`.
 
 - **New Wave-3 Loader-Check (emergency scan, step 6/7)**: Detects
-  - private Tor bootstrap artifacts under `/tmp` (`/tmp/tb`, `.torrc`, `tor.log`)
+  - private Tor bootstrap artifacts under `/tmp` (`/tmp/tb`, `/tmp/.torrc`)
   - stage-2 drop path `/dev/shm/.agent.bin`
   - Tor-exfil process masquerading as `dbus-daemon` (with `AllowSingleHopCircuits`)
-  - `security.selinux` reinfection-marker xattr on `/etc/resolv.conf`, `/run/utmp`, etc.
+  - `security.selinux` reinfection-marker xattr (value `0x01`) on `/etc/resolv.conf`, `/run/utmp`, etc.
   - Wave-3 systemd services (randomized names, `ExecStart` pointing at `/tmp/tb`/`.agent.bin`)
-- **C2 blocklist extended**: Now also blocks `archive.torproject.org` and
-  `torproject.org` (blocking the Tor-bundle download neuters the stage-1 loader),
-  keeping the Wave-3 C2 `.onion` documented. Applies to both `install_c2_blocking()`
-  and the daily-update script.
+    including **transient units** started via `systemd-run`
+- **C2 blocklist**: blocks `temp.sh` and `archive.torproject.org` (blocking the
+  Tor-bundle download neuters the stage-1 loader). Deliberately does **not** block
+  the whole `torproject.org` TLD, to avoid breaking legitimate Tor usage. The
+  Wave-3 C2 `.onion` is documented in `/etc/hosts` for reference. Applies to both
+  `install_c2_blocking()` and the daily-update script.
 - **aur-scanner upgraded to v2.2.0** in `install_aur_scanner()` — includes the
-  new ATOMIC-005..008 Wave-3 detection rules.
+  new ATOMIC-005..010 Wave-3 detection rules.
 
 ### Changed
 - Scan step numbering updated to [7/7] (new Wave-3 check inserted).
 - Hardcoded detection-rule count corrected from "118" to "87" (actual builtin rules).
+- Daily-update C2 rewrite uses `RUN_SU` (root/sudo/doas) instead of hardcoded `sudo`.
 
 ### Verified
-- `bash -n arch-shield.sh` passes
-- aur-scanner v2.2.0: full workspace test suite passes (incl. new ATOMIC-005..008 tests)
-- Dual LLM review (code quality + security architecture) — see PR
+- **Dual-LLM code review** (code-quality + security-architecture) — all HIGH and
+  CRITICAL findings addressed (C2-blocklist collateral damage, xattr value check,
+  transient-unit coverage, `RUN_SU` privilege handling).
+- **Tested in a fresh Arch Distrobox container** (`aur-shield-test`,
+  `archlinux:latest`): `bash -n` passes, `arch-shield.sh --dry-run status` runs,
+  aur-scanner v2.2.0 scans simulated Wave-3 loaders correctly.
+- aur-scanner v2.2.0: full workspace test suite passes (**275 tests**, incl.
+  ATOMIC-005..010 positive/negative cases).
 
 ---
 

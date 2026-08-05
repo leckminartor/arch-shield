@@ -458,13 +458,13 @@ run_full_scan() {
     echo -e "\n${BOLD}[6/7] Wave-3 Loader-Check (Tor-C2, Stage-2, Persistenz)${NC}"
 
     # 1g-a: private Tor bootstrap artifacts under /tmp
-    # Nur loader-spezifische Pfade (/tmp/tb, /tmp/.torrc). Die generischen
-    # Namen .torrc/.lck/tor.log (legitime Tor-Nutzung) werden bewusst NICHT
+    # Nur loader-spezifische Pfade (/tmp/tb-Verzeichnis, .torrc-Datei). Die
+    # generischen Namen tor.log/.lck (legitime Tor-Nutzung) werden bewusst NICHT
     # als Wave-3-Artefakt gewertet.
     local wave3_found=false
     local tor_bundle
     tor_bundle=$(find /tmp /var/tmp -maxdepth 3 \
-        \( -path "/tmp/tb" -o -name "/tmp/.torrc" \) \
+        \( -path "/tmp/tb" -o -name ".torrc" \) \
         2>/dev/null | head -10 || true)
     if [[ -n "$tor_bundle" ]]; then
         log_wrn "Wave-3 Tor-Bootstrap-Artefakte gefunden:"
@@ -481,9 +481,13 @@ run_full_scan() {
         wave3_found=true
     fi
 
-    # 1g-c: Tor exfil process disguised as dbus-daemon
+    # 1g-c: Tor exfil process disguised as dbus-daemon.
+    # `ps` zeigt den aufgelösten argv[0]-String (dbus-daemon), nie das Literal
+    # `argv[0]=` — daher wird hier der Tor-Client-Prozesspfad und die
+    # AllowSingleHop-Masquerade erkannt (die argv[0]-Tarnung matcht die
+    # ATOMIC-008-Quellcode-Regel statisch).
     local tor_proc
-    tor_proc=$(ps auxww 2>/dev/null | grep -E 'argv\[0\]=.*dbus-daemon|dbus-daemon.*AllowSingleHop|[/]tmp/tb/tor' | grep -v grep || true)
+    tor_proc=$(ps auxww 2>/dev/null | grep -E 'dbus-daemon.*AllowSingleHop|[/]tmp/tb/tor' | grep -v grep || true)
     if [[ -n "$tor_proc" ]]; then
         log_err "Verdächtiger Tor-Exfil-Prozess (getarnt) gefunden:"
         echo "$tor_proc" | while read -r line; do echo "    $line"; done
@@ -491,11 +495,13 @@ run_full_scan() {
         wave3_found=true
     fi
 
-    # 1g-d: security.selinux reinfection marker — nur Wert 0x01 zählt
+    # 1g-d: security.selinux reinfection marker — nur Wert 0x01 zählt.
+    # `-e hex` rendert einen 1-Byte-0x01-Wert als literal `0x01` (nicht `-e text`,
+    # das als rohes Control-Byte ausgibt).
     local selinux_marker
-    selinux_marker=$(getfattr -n security.selinux -e text \
+    selinux_marker=$(getfattr -n security.selinux -e hex \
         /run/utmp /var/run/utmp /var/log/hostd.log /etc/resolv.conf \
-        2>/dev/null | grep -E 'security\.selinux="0x01"' || true)
+        2>/dev/null | grep -E 'security\.selinux=0x01' || true)
     if [[ -n "$selinux_marker" ]]; then
         log_wrn "Wave-3 security.selinux xattr-Marker (Wert 0x01) gefunden:"
         echo "$selinux_marker" | while read -r line; do echo "    $line"; done
