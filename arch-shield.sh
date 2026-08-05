@@ -458,10 +458,13 @@ run_full_scan() {
     echo -e "\n${BOLD}[6/7] Wave-3 Loader-Check (Tor-C2, Stage-2, Persistenz)${NC}"
 
     # 1g-a: private Tor bootstrap artifacts under /tmp
+    # Nur loader-spezifische Pfade (/tmp/tb, /tmp/.torrc). Die generischen
+    # Namen .torrc/.lck/tor.log (legitime Tor-Nutzung) werden bewusst NICHT
+    # als Wave-3-Artefakt gewertet.
     local wave3_found=false
     local tor_bundle
     tor_bundle=$(find /tmp /var/tmp -maxdepth 3 \
-        \( -path "/tmp/tb" -o -name ".torrc" -o -name "tor.log" -o -name ".lck" \) \
+        \( -path "/tmp/tb" -o -name "/tmp/.torrc" \) \
         2>/dev/null | head -10 || true)
     if [[ -n "$tor_bundle" ]]; then
         log_wrn "Wave-3 Tor-Bootstrap-Artefakte gefunden:"
@@ -480,7 +483,7 @@ run_full_scan() {
 
     # 1g-c: Tor exfil process disguised as dbus-daemon
     local tor_proc
-    tor_proc=$(ps auxww 2>/dev/null | grep -iE "argv0?=.*dbus-daemon|dbus-daemon.*AllowSingleHop|[/]tmp/tb/tor" | grep -v grep || true)
+    tor_proc=$(ps auxww 2>/dev/null | grep -E 'argv\[0\]=.*dbus-daemon|dbus-daemon.*AllowSingleHop|[/]tmp/tb/tor' | grep -v grep || true)
     if [[ -n "$tor_proc" ]]; then
         log_err "Verdächtiger Tor-Exfil-Prozess (getarnt) gefunden:"
         echo "$tor_proc" | while read -r line; do echo "    $line"; done
@@ -488,23 +491,29 @@ run_full_scan() {
         wave3_found=true
     fi
 
-    # 1g-d: security.selinux reinfection marker on common files (value 0x01)
+    # 1g-d: security.selinux reinfection marker — nur Wert 0x01 zählt
     local selinux_marker
-    selinux_marker=$(getfattr -n security.selinux \
+    selinux_marker=$(getfattr -n security.selinux -e text \
         /run/utmp /var/run/utmp /var/log/hostd.log /etc/resolv.conf \
-        2>/dev/null | grep -E "security.selinux" || true)
+        2>/dev/null | grep -E 'security\.selinux="0x01"' || true)
     if [[ -n "$selinux_marker" ]]; then
-        echo -e "  ${YELLOW}security.selinux xattr vorhanden (prüfen ob Wert 0x01 = Wave-3-Marker):${NC}"
+        log_wrn "Wave-3 security.selinux xattr-Marker (Wert 0x01) gefunden:"
         echo "$selinux_marker" | while read -r line; do echo "    $line"; done
         wave3_found=true
     fi
 
     # 1g-e: Wave-3 systemd persistence (Restart=always + RestartSec=30, randomized name)
+    # Deckt Datei-basierte Services UND transiente Units (systemd-run) ab.
     local w3_services
     w3_services=$(find /etc/systemd/system "$HOME/.config/systemd/user" \
         -maxdepth 1 -name "*.service" -type f 2>/dev/null \
-        -exec grep -lE "ExecStart=.*(tmp/tb|/dev/shm/\.agent|dbus-daemon)" {} + \
+        -exec grep -lE "ExecStart=.*(tmp/tb|/dev/shm/\\.agent|linux-x86_64/agent|dbus-daemon)" {} + \
         2>/dev/null || true)
+    # Transiente Units (systemd-run --user --scope) liegen nicht als Datei vor:
+    local w3_transient
+    w3_transient=$(systemctl --user list-units --type=service --state=running 2>/dev/null \
+        | grep -iE "tmp/tb|/dev/shm/\.agent|linux-x86_64/agent|dbus-daemon" | head -10 || true)
+    w3_services="${w3_services:+$w3_services\n}$w3_transient"
     if [[ -n "$w3_services" ]]; then
         log_wrn "Wave-3-Services gefunden (prüfen):"
         echo "$w3_services" | while read -r line; do echo "    $line"; done
@@ -2259,22 +2268,29 @@ else
 fi
 
 # 5. C2-Domain-Blocklist aktualisieren (tatsächlich in /etc/hosts installieren)
-# Bekannte C2-Domains der Atomic-Arch-Kampagne + Wave 3 Tor-Bundle-Host
-# (Blockieren von archive.torproject.org entmannt den Stage-1-Loader)
-C2_DOMAINS=("temp.sh" "temp.sh." "archive.torproject.org" "archive.torproject.org." "torproject.org" "torproject.org.")
-# Prüfe ob nicht-interaktives sudo verfügbar ist (systemd service hat kein TTY)
-if command -v sudo &>/dev/null && sudo -n true 2>/dev/null; then
+# Bekannte C2-Domains der Atomic-Arch-Kampagne. Hinweis: Nur die konkreten
+# Loader-Endpoints werden geblockt (archive.torproject.org), NICHT die gesamte
+# torproject.org-TLD — das würde legitime Tor-Nutzung brechen.
+C2_DOMAINS=("temp.sh" "archive.torproject.org")
+# Prüfe ob Root oder nicht-interaktives sudo/doas verfügbar ist (systemd service hat kein TTY)
+RUN_SU=""
+if [[ $EUID -ne 0 ]] && command -v sudo &>/dev/null && sudo -n true 2>/dev/null; then
+    RUN_SU="sudo"
+elif [[ $EUID -ne 0 ]] && command -v doas &>/dev/null; then
+    RUN_SU="doas"
+fi
+if [[ -n "$RUN_SU" || $EUID -eq 0 ]]; then
     # Alten arch-shield Block entfernen und neu schreiben (idempotent)
-    sudo sed -i '/# arch-shield-c2-blocklist/,/^$/d' /etc/hosts 2>/dev/null || true
-    echo "" | sudo tee -a /etc/hosts >/dev/null 2>&1 || true
-    echo "# arch-shield-c2-blocklist — updated $(date '+%Y-%m-%d')" | sudo tee -a /etc/hosts >/dev/null 2>&1 || true
+    $RUN_SU sed -i '/# arch-shield-c2-blocklist/,/^$/d' /etc/hosts 2>/dev/null || true
+    echo "" | $RUN_SU tee -a /etc/hosts >/dev/null 2>&1 || true
+    echo "# arch-shield-c2-blocklist — updated $(date '+%Y-%m-%d')" | $RUN_SU tee -a /etc/hosts >/dev/null 2>&1 || true
     for _d in "${C2_DOMAINS[@]}"; do
-        echo "0.0.0.0 $_d" | sudo tee -a /etc/hosts >/dev/null 2>&1 || true
+        echo "0.0.0.0 $_d" | $RUN_SU tee -a /etc/hosts >/dev/null 2>&1 || true
     done
-    echo "" | sudo tee -a /etc/hosts >/dev/null 2>&1 || true
+    echo "" | $RUN_SU tee -a /etc/hosts >/dev/null 2>&1 || true
     echo "  C2-Blocklist aktualisiert in /etc/hosts (${#C2_DOMAINS[@]} Einträge)" >> "$LOGFILE"
 else
-    echo "  C2-Blocklist nicht aktualisiert (sudo benötigt Passwort/TTY)" >> "$LOGFILE"
+    echo "  C2-Blocklist nicht aktualisiert (kein Root/sudo/doas ohne Passwort)" >> "$LOGFILE"
 fi
 
 echo "[$DATE] Daily update complete" >> "$LOGFILE"
@@ -2329,14 +2345,12 @@ install_c2_blocking() {
     # + Wave 3 (Juli/Aug 2026): blockiere den Tor-Bundle-Download-Host, damit der
     #   Stage-1-Loader kein privates Tor bootstrappen kann (entmannt die Attacke).
     #   Die .onion-C2 selbst lässt sich via /etc/hosts nicht blocken (Tor-Auflösung);
-    #   sie wird unten nur dokumentiert.
+    #   sie wird unten nur dokumentiert. Bewusst NUR die konkreten Loader-Endpoints
+    #   (archive.torproject.org), NICHT die gesamte torproject.org-TLD, um legitime
+    #   Tor-Nutzung nicht zu brechen.
     local c2_domains=(
         "temp.sh"
-        "temp.sh."
         "archive.torproject.org"
-        "archive.torproject.org."
-        "torproject.org"
-        "torproject.org."
     )
 
     # Bekannte C2-IPs (aus IOC-Datenbank)
