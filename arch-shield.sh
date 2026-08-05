@@ -15,7 +15,7 @@ set -euo pipefail
 IFS=$'\n\t'
 
 # ── Globale Variablen ──────────────────────────────────────────────────────────
-SCRIPT_VERSION="1.4.4"
+SCRIPT_VERSION="1.5.0"
 SCRIPT_NAME="arch-shield"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PYTHON_BIN=""
@@ -249,7 +249,7 @@ install_aur_scanner() {
         return 0
     fi
 
-    log_inf "Installiere aur-scanner aus Fork-Repo (v2.1.0 mit Atomic-Arch-Regeln)..."
+    log_inf "Installiere aur-scanner aus Fork-Repo (v2.2.0 mit Wave-3-Regeln)..."
 
     # SUDO/doas Kommando ermitteln (nicht mit "sudo" überschreiben!)
     if [[ -z "$SUDO_BIN" ]]; then
@@ -289,8 +289,8 @@ install_aur_scanner() {
     # Cleanup bei Exit/Signal
     trap 'rm -rf "$build_dir"' RETURN
 
-    log_inf "Klone Fork-Repo und baue aur-scanner v2.1.0..."
-    if git clone --depth 1 --branch v2.1.0 --quiet "https://github.com/leckminartor/ks-aur-scanner.git" "$build_dir" 2>/dev/null; then
+    log_inf "Klone Fork-Repo und baue aur-scanner v2.2.0..."
+    if git clone --depth 1 --branch v2.2.0 --quiet "https://github.com/leckminartor/ks-aur-scanner.git" "$build_dir" 2>/dev/null; then
         cd "$build_dir" || { log_err "cd in Build-Dir fehlgeschlagen"; return 1; }
 
         # --locked nur wenn Cargo.lock existiert, --workspace statt deprecated --all
@@ -316,7 +316,7 @@ install_aur_scanner() {
             # pacman hook example
             $SUDO_BIN install -Dm644 "install/aur-scan.hook" "/usr/share/aur-scan/aur-scan.hook.example"
 
-            log_ok "aur-scanner v2.1.0 installiert (aus Fork-Repo)"
+            log_ok "aur-scanner v2.2.0 installiert (aus Fork-Repo)"
             AUR_SCANNER_INSTALLED=true
             cd - >/dev/null
             return 0
@@ -371,7 +371,7 @@ run_full_scan() {
 
     if command_exists aur-scan; then
         AUR_SCANNER_INSTALLED=true
-        echo -e "  ${DIM}Scanne alle installierten AUR-Pakete mit 118 Detektions-Regeln...${NC}"
+        echo -e "  ${DIM}Scanne alle installierten AUR-Pakete mit 87 Detektions-Regeln (inkl. Wave-3)...${NC}"
         if aur-scan system 2>&1; then
             log_ok "aur-scan system: abgeschlossen"
         else
@@ -436,7 +436,7 @@ run_full_scan() {
     fi
 
     # ── 1f: Pacman-Log-Historie ──────────────────────────────────────────────────
-    echo -e "\n${BOLD}[6/6] Pacman-Log-Historie (Juni 2026 Angriffs-Zeitraum)${NC}"
+    echo -e "\n${BOLD}[7/7] Pacman-Log-Historie (Juni 2026 Angriffs-Zeitraum)${NC}"
 
     if [[ -f /var/log/pacman.log ]]; then
         local log_matches
@@ -449,6 +449,75 @@ run_full_scan() {
         log_ok "Pacman-Log-Historie geprüft"
     else
         echo -e "  ${DIM}Kein pacman.log gefunden${NC}"
+    fi
+
+    # ── 1g: Wave-3 (Juli/Aug 2026) Two-Stage Loader-Check ─────────────────────────
+    # Atomic Arch Wave 3: C loader (root via build()) + Rust infostealer/RAT/SSH-worm.
+    # Detects the stage-2 drop paths, private Tor bootstrap, argv[0] masquerade and
+    # the security.selinux reinfection marker. See ATOMIC-005..008 in aur-scan 2.2.0.
+    echo -e "\n${BOLD}[6/7] Wave-3 Loader-Check (Tor-C2, Stage-2, Persistenz)${NC}"
+
+    # 1g-a: private Tor bootstrap artifacts under /tmp
+    local wave3_found=false
+    local tor_bundle
+    tor_bundle=$(find /tmp /var/tmp -maxdepth 3 \
+        \( -path "/tmp/tb" -o -name ".torrc" -o -name "tor.log" -o -name ".lck" \) \
+        2>/dev/null | head -10 || true)
+    if [[ -n "$tor_bundle" ]]; then
+        log_wrn "Wave-3 Tor-Bootstrap-Artefakte gefunden:"
+        echo "$tor_bundle" | while read -r line; do echo "    $line"; done
+        wave3_found=true
+    fi
+
+    # 1g-b: stage-2 drop paths
+    local stage2
+    stage2=$(find /dev/shm /tmp -maxdepth 3 -name ".agent.bin" 2>/dev/null | head -5 || true)
+    if [[ -n "$stage2" ]]; then
+        log_err "Wave-3 Stage-2-Drop gefunden: $stage2"
+        critical_findings=$((critical_findings + 1))
+        wave3_found=true
+    fi
+
+    # 1g-c: Tor exfil process disguised as dbus-daemon
+    local tor_proc
+    tor_proc=$(ps auxww 2>/dev/null | grep -iE "argv0?=.*dbus-daemon|dbus-daemon.*AllowSingleHop|[/]tmp/tb/tor" | grep -v grep || true)
+    if [[ -n "$tor_proc" ]]; then
+        log_err "Verdächtiger Tor-Exfil-Prozess (getarnt) gefunden:"
+        echo "$tor_proc" | while read -r line; do echo "    $line"; done
+        critical_findings=$((critical_findings + 1))
+        wave3_found=true
+    fi
+
+    # 1g-d: security.selinux reinfection marker on common files (value 0x01)
+    local selinux_marker
+    selinux_marker=$(getfattr -n security.selinux \
+        /run/utmp /var/run/utmp /var/log/hostd.log /etc/resolv.conf \
+        2>/dev/null | grep -E "security.selinux" || true)
+    if [[ -n "$selinux_marker" ]]; then
+        echo -e "  ${YELLOW}security.selinux xattr vorhanden (prüfen ob Wert 0x01 = Wave-3-Marker):${NC}"
+        echo "$selinux_marker" | while read -r line; do echo "    $line"; done
+        wave3_found=true
+    fi
+
+    # 1g-e: Wave-3 systemd persistence (Restart=always + RestartSec=30, randomized name)
+    local w3_services
+    w3_services=$(find /etc/systemd/system "$HOME/.config/systemd/user" \
+        -maxdepth 1 -name "*.service" -type f 2>/dev/null \
+        -exec grep -lE "ExecStart=.*(tmp/tb|/dev/shm/\.agent|dbus-daemon)" {} + \
+        2>/dev/null || true)
+    if [[ -n "$w3_services" ]]; then
+        log_wrn "Wave-3-Services gefunden (prüfen):"
+        echo "$w3_services" | while read -r line; do echo "    $line"; done
+        wave3_found=true
+    fi
+
+    if [[ "$wave3_found" == "true" ]]; then
+        scan_results_clean=false
+        if [[ $critical_findings -eq 0 ]]; then
+            log_wrn "Wave-3-verdächtige Artefakte gefunden (nicht kritisch klassifiziert) — manuell prüfen."
+        fi
+    else
+        log_ok "Keine Wave-3 Loader-Artefakte gefunden"
     fi
 
     # ── Zusammenfassung ──────────────────────────────────────────────────────────
@@ -2190,18 +2259,20 @@ else
 fi
 
 # 5. C2-Domain-Blocklist aktualisieren (tatsächlich in /etc/hosts installieren)
-# Bekannte C2-Domains der Atomic-Arch-Kampagne
-C2_DOMAINS="temp.sh"
+# Bekannte C2-Domains der Atomic-Arch-Kampagne + Wave 3 Tor-Bundle-Host
+# (Blockieren von archive.torproject.org entmannt den Stage-1-Loader)
+C2_DOMAINS=("temp.sh" "temp.sh." "archive.torproject.org" "archive.torproject.org." "torproject.org" "torproject.org.")
 # Prüfe ob nicht-interaktives sudo verfügbar ist (systemd service hat kein TTY)
 if command -v sudo &>/dev/null && sudo -n true 2>/dev/null; then
     # Alten arch-shield Block entfernen und neu schreiben (idempotent)
     sudo sed -i '/# arch-shield-c2-blocklist/,/^$/d' /etc/hosts 2>/dev/null || true
     echo "" | sudo tee -a /etc/hosts >/dev/null 2>&1 || true
     echo "# arch-shield-c2-blocklist — updated $(date '+%Y-%m-%d')" | sudo tee -a /etc/hosts >/dev/null 2>&1 || true
-    echo "0.0.0.0 temp.sh" | sudo tee -a /etc/hosts >/dev/null 2>&1 || true
-    echo "0.0.0.0 temp.sh." | sudo tee -a /etc/hosts >/dev/null 2>&1 || true
+    for _d in "${C2_DOMAINS[@]}"; do
+        echo "0.0.0.0 $_d" | sudo tee -a /etc/hosts >/dev/null 2>&1 || true
+    done
     echo "" | sudo tee -a /etc/hosts >/dev/null 2>&1 || true
-    echo "  C2-Blocklist aktualisiert in /etc/hosts" >> "$LOGFILE"
+    echo "  C2-Blocklist aktualisiert in /etc/hosts (${#C2_DOMAINS[@]} Einträge)" >> "$LOGFILE"
 else
     echo "  C2-Blocklist nicht aktualisiert (sudo benötigt Passwort/TTY)" >> "$LOGFILE"
 fi
@@ -2255,9 +2326,17 @@ install_c2_blocking() {
     echo -e "  Blockiert bekannte C2-Domains der Atomic-Arch-Malware via /etc/hosts"
 
     # Bekannte C2-Domains der Atomic-Arch-Kampagne (aus Truesec/ioctl.fail Analyse)
+    # + Wave 3 (Juli/Aug 2026): blockiere den Tor-Bundle-Download-Host, damit der
+    #   Stage-1-Loader kein privates Tor bootstrappen kann (entmannt die Attacke).
+    #   Die .onion-C2 selbst lässt sich via /etc/hosts nicht blocken (Tor-Auflösung);
+    #   sie wird unten nur dokumentiert.
     local c2_domains=(
         "temp.sh"
         "temp.sh."
+        "archive.torproject.org"
+        "archive.torproject.org."
+        "torproject.org"
+        "torproject.org."
     )
 
     # Bekannte C2-IPs (aus IOC-Datenbank)
@@ -2293,10 +2372,13 @@ install_c2_blocking() {
         echo "# arch-shield-c2-blocklist — Atomic Arch C2 Domains"
         echo "# Blockiert bekannte Command-and-Control Server der AUR-Malware"
         echo "# Generiert von arch-shield.sh"
-        echo "0.0.0.0 temp.sh"
-        echo "0.0.0.0 temp.sh."
+        echo "# Wave 3 C2 onion (nicht via hosts blockbar, nur dokumentiert):"
+        echo "#   p4ayykxcrxfyzrgfbbkazernntjbz43hgclrheguylzd7kijmtce6zqd.onion"
+        for _domain in "${c2_domains[@]}"; do
+            echo "0.0.0.0 $_domain"
+        done
     } | run_sudo tee -a /etc/hosts > /dev/null
-    log_ok "C2-Domains blockiert (temp.sh → 0.0.0.0)"
+    log_ok "C2-Domains blockiert (${#c2_domains[@]} Einträge → 0.0.0.0)"
 
     # Optional: Firewall-Regeln für C2-IPs
     if command_exists iptables; then
@@ -2664,7 +2746,7 @@ show_help() {
     echo -e "  ./arch-shield.sh help          Diese Hilfe"
     echo ""
     echo -e "${BOLD}Was wird installiert?${NC}"
-    echo -e "  • aur-scanner (PKGBUILD Security Scanner, 118 Detektions-Regeln)"
+    echo -e "  • aur-scanner (PKGBUILD Security Scanner, 87 Detektions-Regeln)"
     echo -e "  • aur-malware-check (Community IOC-Datenbank, 1935+ infizierte Pakete)"
     echo -e "  • Shell-Integration (Scan vor jedem paru/yay Befehl)"
     echo -e "  • Pacman Pre-Install Hook (blockt Malware VOR Installation)"

@@ -6,6 +6,42 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ---
 
+## [1.5.0] — 2026-08-05
+
+### Added — "Atomic Arch Wave 3" (July/Aug 2026) two-stage loader/stealer coverage
+
+A third wave of the Atomic Arch campaign (AUR push lockdown since 2026-08-01)
+uses a two-stage attack: a C loader executed as **root via
+`sudo "$srcdir/optimizer"` inside `build()`** — *before* any pre-install hook can
+scan it — which bootstraps a private Tor client, downloads a Rust
+infostealer/RAT/SSH-worm from a `.onion` C2, and launches it via
+`systemd-run --user --scope`. Stage 2 exfiltrates credentials/crypto/browser data
+over Tor disguised as `argv[0]=dbus-daemon`.
+
+- **New Wave-3 Loader-Check (emergency scan, step 6/7)**: Detects
+  - private Tor bootstrap artifacts under `/tmp` (`/tmp/tb`, `.torrc`, `tor.log`)
+  - stage-2 drop path `/dev/shm/.agent.bin`
+  - Tor-exfil process masquerading as `dbus-daemon` (with `AllowSingleHopCircuits`)
+  - `security.selinux` reinfection-marker xattr on `/etc/resolv.conf`, `/run/utmp`, etc.
+  - Wave-3 systemd services (randomized names, `ExecStart` pointing at `/tmp/tb`/`.agent.bin`)
+- **C2 blocklist extended**: Now also blocks `archive.torproject.org` and
+  `torproject.org` (blocking the Tor-bundle download neuters the stage-1 loader),
+  keeping the Wave-3 C2 `.onion` documented. Applies to both `install_c2_blocking()`
+  and the daily-update script.
+- **aur-scanner upgraded to v2.2.0** in `install_aur_scanner()` — includes the
+  new ATOMIC-005..008 Wave-3 detection rules.
+
+### Changed
+- Scan step numbering updated to [7/7] (new Wave-3 check inserted).
+- Hardcoded detection-rule count corrected from "118" to "87" (actual builtin rules).
+
+### Verified
+- `bash -n arch-shield.sh` passes
+- aur-scanner v2.2.0: full workspace test suite passes (incl. new ATOMIC-005..008 tests)
+- Dual LLM review (code quality + security architecture) — see PR
+
+---
+
 ## [1.4.4] — 2026-06-26
 
 ### Fixed
@@ -81,6 +117,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 | 1.3.0 | 2026-06-23 | Protection, hardening, emergency recovery, threat-intel updates |
 | 1.4.3 | 2026-06-23 | Code review fixes (qwen3-coder + deepseek-v4-pro) |
 | 1.4.4 | 2026-06-26 | Pre-Install Hook chroot fix (/bin/sh -c wrapper) |
+| 1.5.0 | 2026-08-05 | Wave-3 loader/stealer coverage (Tor-C2, stage-2, dbus masquerade), C2 blocklist + torproject.org, aur-scanner v2.2.0 |
 
 ---
 
