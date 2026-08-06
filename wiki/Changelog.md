@@ -125,6 +125,8 @@ over Tor disguised as `argv[0]=dbus-daemon`.
 | 1.3.0 | 2026-06-23 | Protection, hardening, emergency recovery, threat-intel updates |
 | 1.4.3 | 2026-06-23 | Code review fixes (qwen3-coder + deepseek-v4-pro) |
 | 1.4.4 | 2026-06-26 | Pre-Install Hook chroot fix (/bin/sh -c wrapper) |
+| 1.4.5 | 2026-07-10 | aur-scanner aus Fork-Repo gebaut (v2.1.0, Atomic-Arch-5-Wave-Coverage) |
+| 1.4.6 | 2026-07-11 | install_aur_scanner() gehärtet (Security-Review: SUDO_BIN, mktemp-Race, --workspace, --locked bedingt, Pfad-Typos) |
 | 1.5.0 | 2026-08-05 | Wave-3 loader/stealer coverage (Tor-C2, stage-2, dbus masquerade), C2 blocklist + torproject.org, aur-scanner v2.2.0 |
 
 ---
