@@ -52,7 +52,7 @@ arch-shield installs a pre-scan hook into your shell configuration. When you run
 
 1. Intercepts `paru -S` / `paru -Syu` / `yay -S` / `yay -Syu` commands
 2. Downloads the PKGBUILD for each package
-3. Runs the PKGBUILD through the 118-rule static scanner
+3. Runs the PKGBUILD through the 87-rule static scanner
 4. Checks package name against IOC database
 5. If threats found:
    - 🔴 Critical → **Aborts** the command

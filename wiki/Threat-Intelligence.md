@@ -16,11 +16,11 @@ arch-shield uses multiple threat-intelligence feeds to detect known AUR malware.
 
 This is the primary database for detecting known-bad packages. When the systemd timer runs the weekly update, it pulls the latest version of this database.
 
-### aur-scanner (KiefStudioMA)
+### aur-scanner (leckminartor fork)
 
-- **Repository:** [KiefStudioMA/ks-aur-scanner](https://github.com/KiefStudioMA/ks-aur-scanner)
+- **Repository:** [leckminartor/ks-aur-scanner](https://github.com/leckminartor/ks-aur-scanner)
 - **Type:** PKGBUILD static analysis engine
-- **Contents:** 118 detection rules for malicious patterns in PKGBUILDs
+- **Contents:** 87 detection rules for malicious patterns in PKGBUILDs
 - **Used by:** System Scan (Layer 2), Package Check, Shell Integration
 
 This scanner performs static analysis on PKGBUILDs — it doesn't need a database of known-bad packages, it detects *patterns* that indicate malicious intent.

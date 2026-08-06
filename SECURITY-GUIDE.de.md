@@ -55,7 +55,7 @@ Am **11. Juni 2026** wurde eine massiven Supply-Chain-Attacke auf das **Arch Use
 
 ### 1. System-Scan: CLEAN ✅
 - **aur-malware-check** (Community-Tool, 1935 bekannte infizierte Pakete): CLEAN
-- **aur-scan system** (118 Detektions-Regeln): Nur 1 False-Positive (google-chrome Cron-Rest mit Erklärungs-Befehl `rm -r`)
+- **aur-scan system** (87 Detektions-Regeln): Nur 1 False-Positive (google-chrome Cron-Rest mit Erklärungs-Befehl `rm -r`)
 - **eBPF Rootkit-Check:** Keine versteckten Maps
 - **npm/bun Cache-Check:** Keine Malware-Pakete
 - **systemd-Persistenz-Check:** Keine verdächtigen Services

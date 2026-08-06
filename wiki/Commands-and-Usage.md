@@ -36,7 +36,7 @@ Shows a numbered menu with all 7 modules. Pick a number to run that module. Best
 
 Runs the 6-layer system scan. Checks for:
 - 1,935+ known infected packages (IOC database)
-- 118 PKGBUILD detection rules (static analysis)
+- 87 PKGBUILD detection rules (static analysis)
 - eBPF rootkit traces
 - npm/bun cache malicious packages
 - systemd persistence mechanisms

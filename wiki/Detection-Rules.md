@@ -1,6 +1,6 @@
 # Detection Rules
 
-arch-shield's PKGBUILD scanner uses **118 static detection rules** to identify malicious patterns in AUR PKGBUILDs and `.install` files. These rules are organized into categories.
+arch-shield's PKGBUILD scanner uses **87 static detection rules** to identify malicious patterns in AUR PKGBUILDs and `.install` files. These rules are organized into categories.
 
 ---
 

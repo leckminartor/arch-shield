@@ -8,7 +8,7 @@ Welcome to the arch-shield wiki! This is the comprehensive documentation for the
 - **[Installation](Installation)** — Detailed installation guide
 - **[Commands & Usage](Commands-and-Usage)** — All commands and options explained
 - **[Module Reference](Module-Reference)** — Detailed description of all 7 modules
-- **[Detection Rules](Detection-Rules)** — The 118 PKGBUILD detection rules explained
+- **[Detection Rules](Detection-Rules)** — The 87 PKGBUILD detection rules explained
 - **[Emergency Recovery](Emergency-Recovery)** — Step-by-step infection recovery guide
 - **[Threat Intelligence](Threat-Intelligence)** — IOC databases and update feeds
 - **[Configuration](Configuration)** — AUR helper config, shell integration, systemd timer

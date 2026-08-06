@@ -95,7 +95,7 @@ Bash is available on every Arch system by default — no Python dependencies nee
 
 ### How does the PKGBUILD scanner work?
 
-The scanner performs static analysis on PKGBUILD files using 118 grep/regex-based rules. Each rule matches a known malicious pattern (reverse shell, credential theft, eBPF rootkit, etc.). The rules are categorized by severity (Critical, Warning, Info).
+The scanner performs static analysis on PKGBUILD files using 87 grep/regex-based rules. Each rule matches a known malicious pattern (reverse shell, credential theft, eBPF rootkit, etc.). The rules are categorized by severity (Critical, Warning, Info).
 
 ### Can I add my own detection rules?
 

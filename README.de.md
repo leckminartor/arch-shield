@@ -56,7 +56,7 @@ chmod +x arch-shield.sh
 
 Das Script hat **7 Module**:
 
-1. **🔍 System-Scan** — 6-Schicht-Scan: 1935 IOC-Pakete, statische PKGBUILD-Analyse (118 Regeln), eBPF-Rootkit, npm/bun-Cache, systemd-Persistenz, pacman-Log-Historie
+1. **🔍 System-Scan** — 6-Schicht-Scan: 1935 IOC-Pakete, statische PKGBUILD-Analyse (87 Regeln), eBPF-Rootkit, npm/bun-Cache, systemd-Persistenz, pacman-Log-Historie
 2. **🛡️ Schutz installieren** — aur-scanner, aur-malware-check, Shell-Integration, Pre/Post-Install Hooks, wöchentlicher systemd-Timer
 3. **🔧 System härten** — eBPF-Härtung, Build-Isolation (Chroot), Repo-SigLevel-Prüfung, AUR-Helper-Konfiguration, Firewall-Status
 4. **📊 Status** — Übersicht aller installierten Schutzmaßnahmen
@@ -66,7 +66,7 @@ Das Script hat **7 Module**:
 
 ## Was installiert wird
 
-- **aur-scanner** — PKGBUILD Security Scanner mit 118 Detektions-Regeln
+- **aur-scanner** — PKGBUILD Security Scanner mit 87 Detektions-Regeln
 - **aur-malware-check** — Community IOC-Datenbank mit 1935+ infizierten Paketen
 - **Shell-Integration** — Scannt vor jedem `paru`/`yay` Befehl (bash, zsh, fish, nu)
 - **Pacman Pre-Install Hook** — Blockt Malware vor der Installation (`AbortOnFail`)
@@ -79,7 +79,7 @@ Das Script hat **7 Module**:
 ## Was der Scan prüft
 
 1. **1935+ bekannte infizierte Pakete** — Abgleich mit Community IOC-Datenbank
-2. **Statische PKGBUILD-Analyse** — 118 Detektions-Regeln (Reverse Shells, Credential Theft, eBPF Rootkit, Cryptominer, Obfuscation, ...)
+2. **Statische PKGBUILD-Analyse** — 87 Detektions-Regeln (Reverse Shells, Credential Theft, eBPF Rootkit, Cryptominer, Obfuscation, ...)
 3. **eBPF-Rootkit-Spuren** — `/sys/fs/bpf/hidden_*` Maps
 4. **npm/bun Cache** — Maliziöse Pakete (atomic-lockfile, js-digest, lockfile-js)
 5. **Systemd-Persistenz** — Verdächtige Services mit Restart=always

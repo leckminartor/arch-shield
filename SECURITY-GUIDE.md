@@ -55,7 +55,7 @@ On **June 11, 2026**, a massive supply-chain attack on the **Arch User Repositor
 
 ### 1. System Scan: CLEAN ✅
 - **aur-malware-check** (community tool, 1,935 known infected packages): CLEAN
-- **aur-scan system** (118 detection rules): Only 1 false positive (google-chrome cron job with explanatory `rm -r` command)
+- **aur-scan system** (87 detection rules): Only 1 false positive (google-chrome cron job with explanatory `rm -r` command)
 - **eBPF Rootkit Check:** No hidden maps
 - **npm/bun Cache Check:** No malware packages
 - **systemd Persistence Check:** No suspicious services

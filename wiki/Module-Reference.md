@@ -15,7 +15,7 @@ Scans your system in 6 layers for AUR malware and compromise indicators.
 | Layer | What it checks | How |
 |-------|---------------|-----|
 | **IOC Database** | 1,935+ known infected packages | Cross-references installed packages against community IOC feed |
-| **PKGBUILD Analysis** | 118 static detection rules | Analyzes PKGBUILDs for malicious patterns (reverse shells, credential theft, eBPF rootkit, cryptominer, obfuscation) |
+| **PKGBUILD Analysis** | 87 static detection rules | Analyzes PKGBUILDs for malicious patterns (reverse shells, credential theft, eBPF rootkit, cryptominer, obfuscation) |
 | **eBPF Rootkit** | Hidden BPF maps | Checks `/sys/fs/bpf/hidden_*` for rootkit traces |
 | **npm/bun Cache** | Malicious npm packages | Scans for atomic-lockfile, js-digest, lockfile-js and similar |
 | **systemd Persistence** | Suspicious services | Finds services with `Restart=always` and suspicious paths |
@@ -39,7 +39,7 @@ Installs automated protection layers that run continuously after setup.
 
 | Component | Description |
 |-----------|-------------|
-| **aur-scanner** | PKGBUILD security scanner with 118 detection rules |
+| **aur-scanner** | PKGBUILD security scanner with 87 detection rules |
 | **aur-malware-check** | Community IOC database with 1,935+ infected packages |
 | **Shell Integration** | Pre-scan before every `paru`/`yay` command (bash, zsh, fish, nu) |
 | **Pacman Pre-Install Hook** | Blocks malware before installation (`AbortOnFail`) |
