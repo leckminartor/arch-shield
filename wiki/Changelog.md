@@ -50,6 +50,53 @@ over Tor disguised as `argv[0]=dbus-daemon`.
 
 ---
 
+## [1.4.6] — 2026-07-11
+
+### Fixed — install_aur_scanner() hardened per security review
+
+| Issue | Fix |
+|-------|-----|
+| SUDO_BIN hardcoded to sudo — broke doas support | Preserve find_sudo() result; never overwrite SUDO_BIN |
+| Temp dir fallback race condition (fixed path) | mktemp -d only; trap + RETURN for atomic cleanup |
+| cargo build --all deprecated since 2020 | --workspace instead |
+| --locked without checking Cargo.lock | Only add --locked when Cargo.lock exists |
+| rust package name assumed for all distros | Manjaro uses rustup; auto-detected via DISTRO_ID |
+| Path typo /usr/share/aur-scanner/ | Consistent /usr/share/aur-scan/ everywhere |
+| cd error ignored | cd build_dir || { log_err ...; return 1; } |
+| trap missing for build dir cleanup | trap rm -rf build_dir RETURN |
+
+### Verified
+- Distrobox Arch Linux: `cargo build --release --workspace` → success
+- `aur-scan` 2.1.0 runs correctly
+- arch-shield.sh v1.4.6 starts, menus work
+
+---
+
+## [1.4.5] — 2026-07-10
+
+### Added — aur-scanner jetzt aus Fork-Repo (v2.1.0)
+
+- `install_aur_scanner()` baut **nicht mehr** das veraltete AUR-Paket `aur-scanner` (v2.0.0), sondern **direkt aus dem leckminartor-Fork**:
+  https://github.com/leckminartor/ks-aur-scanner.git (Tag `v2.1.0`)
+- Enthält alle **Atomic-Arch-5-Wave-Erkennungen** (v2.1.0)
+
+### Atomic-Arch 5-Wave Coverage (v2.1.0)
+| Wave | Angriffsmethode | Erkennung |
+|------|----------------|-----------|
+| W1 | `npm install atomic-lockfile` | ATOMIC-001 + ATOMIC-002 |
+| W2 | `bun add js-digest` + `.hook` Files | ATOMIC-001/002 + **.hook-Scanning** |
+| W3 | Obfuscated `bun add nextfile-js` | ATOMIC-001 erweitert + De-obfuscation |
+| W4 | ALPM `.hook` File Delivery | **NEU: .hook File Discovery** |
+| W5 | Shell-RC Injection (fish/zsh/profile.d) | ENV-003 erweitert |
+| — | `~/.local/bin/sudo` Credential Shim | **NEU: ATOMIC-004** |
+
+### Verified
+- Build in Distrobox Arch Linux (Rust 1.96.0) — 6m 48s
+- `aur-scan` 2.1.0 läuft korrekt
+- arch-shield.sh v1.4.5 startet, erkennt Distro/Shell, Menüs funktionieren
+
+---
+
 ## [1.4.4] — 2026-06-26
 
 ### Fixed
