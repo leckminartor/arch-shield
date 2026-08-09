@@ -7,7 +7,7 @@
 [![License](https://img.shields.io/badge/license-GPL--3.0-blue.svg)](LICENSE)
 [![Bash](https://img.shields.io/badge/bash-4%2B-green.svg)](https://www.gnu.org/software/bash/)
 [![Arch Linux](https://img.shields.io/badge/Arch%20Linux-supported-blue.svg)](https://archlinux.org)
-[![Version](https://img.shields.io/badge/version-1.5.0-green.svg)](https://github.com/leckminartor/arch-shield/releases)
+[![Version](https://img.shields.io/badge/version-1.5.1-green.svg)](https://github.com/leckminartor/arch-shield/releases)
 
 **[Deutsch](README.de.md)** | **[English](README.md)**
 

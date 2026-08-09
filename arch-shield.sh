@@ -15,7 +15,7 @@ set -euo pipefail
 IFS=$'\n\t'
 
 # ── Globale Variablen ──────────────────────────────────────────────────────────
-SCRIPT_VERSION="1.5.0"
+SCRIPT_VERSION="1.5.1"
 SCRIPT_NAME="arch-shield"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PYTHON_BIN=""
@@ -26,6 +26,7 @@ DISTRO_ID=""
 USER_SHELL=""
 USER_SHELL_CONFIG=""
 AUR_SCAN_CHECK_DIR=""
+AUR_SCAN_BUILD_DIR=""
 AUR_SCANNER_INSTALLED=false
 LOG_DIR="$HOME/.local/share/arch-shield"
 LOG_FILE="$LOG_DIR/arch-shield.log"
@@ -35,6 +36,7 @@ FORCE_YES=false
 # Cleanup-Trap für temporäre Verzeichnisse
 cleanup_temp() {
     [[ -n "$AUR_SCAN_CHECK_DIR" && -d "$AUR_SCAN_CHECK_DIR" ]] && rm -rf "$AUR_SCAN_CHECK_DIR" 2>/dev/null || true
+    [[ -n "$AUR_SCAN_BUILD_DIR" && -d "$AUR_SCAN_BUILD_DIR" ]] && rm -rf "$AUR_SCAN_BUILD_DIR" 2>/dev/null || true
 }
 trap cleanup_temp EXIT
 
@@ -281,17 +283,19 @@ install_aur_scanner() {
     fi
 
     # Temporäres Build-Verzeichnis (atomic, keine Race-Condition)
-    local build_dir
-    build_dir=$(mktemp -d -t "arch-shield-aur-scanner-build.XXXXXX") || {
+    # Globale Variable statt `local`: Ein RETURN-Trap feuert auch beim Return des
+    # CALLERS erneut. Mit `local` ist die Variable dann bereits zerstört → unter
+    # `set -u` (Z. 14) crasht der Trap mit "unbound variable" UND das Cleanup ist
+    # wirkungslos (leeres Argument). Globale Variable + EXIT-Trap (cleanup_temp)
+    # löst beides: kein Crash, Verzeichnis wird zuverlässig aufgeräumt.
+    AUR_SCAN_BUILD_DIR=$(mktemp -d -t "arch-shield-aur-scanner-build.XXXXXX") || {
         log_err "Konnte temporäres Build-Verzeichnis nicht erstellen."
         return 1
     }
-    # Cleanup bei Exit/Signal
-    trap 'rm -rf "$build_dir"' RETURN
 
     log_inf "Klone Fork-Repo und baue aur-scanner v2.2.0..."
-    if git clone --depth 1 --branch v2.2.0 --quiet "https://github.com/leckminartor/ks-aur-scanner.git" "$build_dir" 2>/dev/null; then
-        cd "$build_dir" || { log_err "cd in Build-Dir fehlgeschlagen"; return 1; }
+    if git clone --depth 1 --branch v2.2.0 --quiet "https://github.com/leckminartor/ks-aur-scanner.git" "$AUR_SCAN_BUILD_DIR" 2>/dev/null; then
+        cd "$AUR_SCAN_BUILD_DIR" || { log_err "cd in Build-Dir fehlgeschlagen"; return 1; }
 
         # --locked nur wenn Cargo.lock existiert, --workspace statt deprecated --all
         local cargo_locked=""
@@ -571,27 +575,27 @@ install_protection() {
 
     # ── 2a: aur-scanner installieren ─────────────────────────────────────────────
     echo -e "\n${BOLD}[1/6] aur-scanner (PKGBUILD Security Scanner)${NC}"
-    install_aur_scanner
+    install_aur_scanner || log_wrn "Schritt 1/6 (aur-scanner) fehlgeschlagen — fahre fort"
 
     # ── 2b: aur-malware-check ────────────────────────────────────────────────────
     echo -e "\n${BOLD}[2/6] aur-malware-check (Community IOC Database)${NC}"
-    install_aur_malware_check
+    install_aur_malware_check || log_wrn "Schritt 2/6 (aur-malware-check) fehlgeschlagen — fahre fort"
 
     # ── 2c: Shell-Integration ────────────────────────────────────────────────────
     echo -e "\n${BOLD}[3/6] Shell-Integration (Scan vor AUR-Installationen)${NC}"
-    install_shell_integration
+    install_shell_integration || log_wrn "Schritt 3/6 (Shell-Integration) fehlgeschlagen — fahre fort"
 
     # ── 2d: Pacman Pre-Install Hook ──────────────────────────────────────────────
     echo -e "\n${BOLD}[4/6] Pacman Pre-Install Hook (blockt Malware VOR Installation)${NC}"
-    install_pacman_pre_hook
+    install_pacman_pre_hook || log_wrn "Schritt 4/6 (Pre-Install Hook) fehlgeschlagen — fahre fort"
 
     # ── 2e: Pacman Post-Install Hook ──────────────────────────────────────────────
     echo -e "\n${BOLD}[5/6] Pacman Post-Install Hook (scannt nach Installationen)${NC}"
-    install_pacman_post_hook
+    install_pacman_post_hook || log_wrn "Schritt 5/6 (Post-Install Hook) fehlgeschlagen — fahre fort"
 
     # ── 2f: Wöchentlicher systemd Timer ───────────────────────────────────────────
     echo -e "\n${BOLD}[6/6] Wöchentlicher Scan-Timer (systemd user timer)${NC}"
-    install_weekly_timer
+    install_weekly_timer || log_wrn "Schritt 6/6 (Scan-Timer) fehlgeschlagen — fahre fort"
 
     echo ""
     log_sep
@@ -2524,6 +2528,7 @@ AUDITRULES
         run_sudo mkdir -p "$audit_dir" 2>/dev/null || true
         run_sudo cp "$rules_file" "$audit_dir/arch-shield.rules" 2>/dev/null || {
             log_wrn "Konnte audit-rules nicht installieren"
+            rm -f "$rules_file" 2>/dev/null || true
             return 1
         }
         # Regeln neu laden

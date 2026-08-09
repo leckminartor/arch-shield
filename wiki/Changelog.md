@@ -6,6 +6,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ---
 
+## [1.5.1] — 2026-08-09
+
+### Fixed — `build_dir: unbound variable` crash + wirkungsloses Temp-Cleanup
+
+Ein echter Bug wurde beim Test in einer frischen Arch-Distrobox gefunden und behoben.
+
+- **Crash am Ende von `protect`**: `install_aur_scanner()` nutzte eine `local build_dir`-Variable in einem `trap 'rm -rf "$build_dir"' RETURN`. Ein `RETURN`-Trap feuert auch beim Return des **Callers** erneut — dort ist die `local`-Variable bereits zerstört, sodass der Trap unter `set -u` mit `build_dir: unbound variable` crashte. Der `protect`-Lauf endete mit Exit-Code 1, obwohl alle 6 Schutzmaßnahmen erfolgreich installiert waren.
+- **Wirkungsloses Cleanup**: Da `local`-Variablen beim Funktions-Return zerstört werden, war `${build_dir:-}` im Trap immer leer → `rm -rf ""` → No-op → das temporäre Build-Verzeichnis (`/tmp/arch-shield-aur-scanner-build.*`) leakte bei jedem Lauf.
+- **Fix**: `build_dir` ist jetzt die **globale** Variable `AUR_SCAN_BUILD_DIR` (konsistent mit dem bestehenden `AUR_SCAN_CHECK_DIR`-Muster). Das Cleanup übernimmt der globale `cleanup_temp`-EXIT-Trap. Kein Crash, kein Temp-Dir-Leak.
+- **Fehlerisolierung in `install_protection()`**: Die 6 Sub-Installationen werden jetzt mit `|| log_wrn "Schritt X/6 fehlgeschlagen — fahre fort"` abgesichert, damit ein Teilfehler nicht mehr den gesamten `protect`-Lauf abbricht (partielle Installation).
+- **Temp-Datei-Leak in `install_auditd_monitoring()`**: `rules_file` wird jetzt auch bei `cp`-Fehler aufgeräumt.
+
+### Verified
+
+- **Dual-LLM-Code-Review**: Code-Qualität + Security-Architektur (2 parallele Reviews)
+- **Getestet in frischer Arch-Distrobox** (`archlinux:latest`): `protect` läuft sauber (Exit 0, kein Crash, kein Temp-Dir-Leak), Malware-Erkennung (simuliertes `atomic-lockfile` im npm-Cache → KRITISCHER FUND) funktioniert, Idempotenz bestätigt.
+
 ## [1.5.0] — 2026-08-05
 
 ### Added — "Atomic Arch Wave 3" (July/Aug 2026) two-stage loader/stealer coverage
@@ -175,6 +192,7 @@ over Tor disguised as `argv[0]=dbus-daemon`.
 | 1.4.5 | 2026-07-10 | aur-scanner aus Fork-Repo gebaut (v2.1.0, Atomic-Arch-5-Wave-Coverage) |
 | 1.4.6 | 2026-07-11 | install_aur_scanner() gehärtet (Security-Review: SUDO_BIN, mktemp-Race, --workspace, --locked bedingt, Pfad-Typos) |
 | 1.5.0 | 2026-08-05 | Wave-3 loader/stealer coverage (Tor-C2, stage-2, dbus masquerade), C2 blocklist + torproject.org, aur-scanner v2.2.0 |
+| 1.5.1 | 2026-08-09 | Fix: `build_dir: unbound variable` crash + wirkungsloses Temp-Cleanup (globale Variable + EXIT-Trap), Fehlerisolierung in install_protection(), rules_file-Leak behoben |
 
 ---
 
