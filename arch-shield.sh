@@ -15,7 +15,7 @@ set -euo pipefail
 IFS=$'\n\t'
 
 # ── Globale Variablen ──────────────────────────────────────────────────────────
-SCRIPT_VERSION="1.5.1"
+SCRIPT_VERSION="1.5.2"
 SCRIPT_NAME="arch-shield"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PYTHON_BIN=""
@@ -678,14 +678,14 @@ Target = *
 [Action]
 Description = AUR Shield: Pre-install security scan
 When = PreTransaction
-Exec = /usr/bin/aur-scan-hook
+Exec = /bin/sh -c 'command -v /usr/local/bin/aur-scan-hook >/dev/null 2>&1 || exit 0; exec /usr/local/bin/aur-scan-hook'
 AbortOnFail
 NeedsTargets
 EOF"
         return 1
     fi
 
-    if ! command_exists aur-scan-hook && ! command_exists /usr/bin/aur-scan-hook; then
+    if ! command_exists aur-scan-hook && ! command_exists /usr/local/bin/aur-scan-hook; then
         log_wrn "aur-scan-hook Binary nicht gefunden — Hook würde nichts ausführen."
         log_wrn "Stelle sicher, dass aur-scanner korrekt installiert ist."
         return 1
@@ -702,7 +702,7 @@ Target = *
 [Action]
 Description = AUR Shield: Pre-install security scan (blocks malicious packages)
 When = PreTransaction
-Exec = /usr/bin/aur-scan-hook
+Exec = /bin/sh -c 'command -v /usr/local/bin/aur-scan-hook >/dev/null 2>&1 || exit 0; exec /usr/local/bin/aur-scan-hook'
 AbortOnFail
 NeedsTargets
 HOOK
@@ -739,8 +739,7 @@ Target = *
 [Action]
 Description = AUR Shield: Post-install security scan
 When = PostTransaction
-Exec = /usr/bin/aur-scan system
-Depends = aur-scanner
+Exec = /usr/local/bin/aur-scan system
 HOOK
     log_ok "Post-Install Hook installiert: $hook_file"
 }
@@ -780,7 +779,7 @@ echo "========================================" >> "$LOGFILE"
 
 # aur-scan system
 echo "--- aur-scan system ---" >> "$LOGFILE"
-/usr/bin/aur-scan system >> "$LOGFILE" 2>&1 || echo "aur-scan: non-zero exit" >> "$LOGFILE"
+/usr/local/bin/aur-scan system >> "$LOGFILE" 2>&1 || echo "aur-scan: non-zero exit" >> "$LOGFILE"
 
 # aur-malware-check (falls vorhanden)
 MALWARE_CHECK_DIR="${ARCH_SHIELD_MALWARE_DIR:-$HOME/.local/share/arch-shield/aur-malware-check}"

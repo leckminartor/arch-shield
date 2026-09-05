@@ -6,6 +6,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ---
 
+## [1.5.2] — 2026-09-05
+
+### Fixed — Veraltete `/usr/bin/aur-scan`-Pfade (Fork-Installation)
+
+Die generierten Pacman-Hooks und der Weekly-Timer referenzierten noch die alten `/usr/bin/`-Pfade des entfernten AUR-Pakets `aur-scanner`. Da die Binaries seit v1.5.0 aus dem Fork-Repo nach `/usr/local/bin/` installiert werden, brachen `paru`/`pacman` mit `Kann Abhängigkeiten nicht erfüllen` ab.
+
+- **Post-Install-Hook** (`install_pacman_post_hook`): `Exec = /usr/bin/aur-scan system` → `/usr/local/bin/aur-scan system`; die fehlerhafte `Depends = aur-scanner`-Zeile entfernt (das AUR-Paket existiert nicht mehr — `Depends` ließ pacman die Transaktion abbrechen).
+- **Pre-Install-Hook** (`install_pacman_pre_hook`): `Exec = /usr/bin/aur-scan-hook` → `/usr/local/bin/aur-scan-hook` (sowohl im manuellen `tee`-Hinweis als auch im installierten Hook); `command_exists`-Prüfung auf `/usr/local/bin/aur-scan-hook` korrigiert.
+- **Weekly-Timer** (`install_weekly_timer`): `/usr/bin/aur-scan system` → `/usr/local/bin/aur-scan system`.
+- **Version**: `SCRIPT_VERSION` 1.5.1 → 1.5.2.
+
+### Verified
+
+- **Dual-LLM-Code-Review**: Code-Qualität + Security-Architektur (2 parallele Reviews)
+- **Getestet in frischer Arch-Distrobox** (`archlinux:latest`): Hook-Generierung, `bash -n`-Syntaxcheck, Pfad-Konsistenz (keine `/usr/bin/aur-scan`-Referenzen mehr).
+
 ## [1.5.1] — 2026-08-09
 
 ### Fixed — `build_dir: unbound variable` crash + wirkungsloses Temp-Cleanup
@@ -193,6 +209,7 @@ over Tor disguised as `argv[0]=dbus-daemon`.
 | 1.4.6 | 2026-07-11 | install_aur_scanner() gehärtet (Security-Review: SUDO_BIN, mktemp-Race, --workspace, --locked bedingt, Pfad-Typos) |
 | 1.5.0 | 2026-08-05 | Wave-3 loader/stealer coverage (Tor-C2, stage-2, dbus masquerade), C2 blocklist + torproject.org, aur-scanner v2.2.0 |
 | 1.5.1 | 2026-08-09 | Fix: `build_dir: unbound variable` crash + wirkungsloses Temp-Cleanup (globale Variable + EXIT-Trap), Fehlerisolierung in install_protection(), rules_file-Leak behoben |
+| 1.5.2 | 2026-09-05 | Fix: veraltete `/usr/bin/aur-scan`-Pfade in Pacman-Hooks + Weekly-Timer → `/usr/local/bin/` (Fork-Installation), `Depends = aur-scanner` aus Post-Install-Hook entfernt |
 
 ---
 
