@@ -15,7 +15,7 @@ set -euo pipefail
 IFS=$'\n\t'
 
 # ── Globale Variablen ──────────────────────────────────────────────────────────
-SCRIPT_VERSION="1.5.2"
+SCRIPT_VERSION="1.5.3"
 SCRIPT_NAME="arch-shield"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PYTHON_BIN=""
@@ -251,7 +251,7 @@ install_aur_scanner() {
         return 0
     fi
 
-    log_inf "Installiere aur-scanner aus Fork-Repo (v2.2.0 mit Wave-3-Regeln)..."
+    log_inf "Installiere aur-scanner aus Fork-Repo (v2.5.2 mit Wave-3-Regeln + validator + Multi-Package-Skip)..."
 
     # SUDO/doas Kommando ermitteln (nicht mit "sudo" überschreiben!)
     if [[ -z "$SUDO_BIN" ]]; then
@@ -293,8 +293,8 @@ install_aur_scanner() {
         return 1
     }
 
-    log_inf "Klone Fork-Repo und baue aur-scanner v2.2.0..."
-    if git clone --depth 1 --branch v2.2.0 --quiet "https://github.com/leckminartor/ks-aur-scanner.git" "$AUR_SCAN_BUILD_DIR" 2>/dev/null; then
+    log_inf "Klone Fork-Repo und baue aur-scanner v2.5.2..."
+    if git clone --depth 1 --branch v2.5.2 --quiet "https://github.com/leckminartor/ks-aur-scanner.git" "$AUR_SCAN_BUILD_DIR" 2>/dev/null; then
         cd "$AUR_SCAN_BUILD_DIR" || { log_err "cd in Build-Dir fehlgeschlagen"; return 1; }
 
         # --locked nur wenn Cargo.lock existiert, --workspace statt deprecated --all
@@ -320,7 +320,7 @@ install_aur_scanner() {
             # pacman hook example
             $SUDO_BIN install -Dm644 "install/aur-scan.hook" "/usr/share/aur-scan/aur-scan.hook.example"
 
-            log_ok "aur-scanner v2.2.0 installiert (aus Fork-Repo)"
+            log_ok "aur-scanner v2.5.2 installiert (aus Fork-Repo)"
             AUR_SCANNER_INSTALLED=true
             cd - >/dev/null
             return 0
@@ -375,7 +375,7 @@ run_full_scan() {
 
     if command_exists aur-scan; then
         AUR_SCANNER_INSTALLED=true
-        echo -e "  ${DIM}Scanne alle installierten AUR-Pakete mit 87 Detektions-Regeln (inkl. Wave-3)...${NC}"
+        echo -e "  ${DIM}Scanne alle installierten AUR-Pakete mit 90 Detektions-Regeln (inkl. Wave-3)...${NC}"
         if aur-scan system 2>&1; then
             log_ok "aur-scan system: abgeschlossen"
         else
@@ -458,7 +458,7 @@ run_full_scan() {
     # ── 1g: Wave-3 (Juli/Aug 2026) Two-Stage Loader-Check ─────────────────────────
     # Atomic Arch Wave 3: C loader (root via build()) + Rust infostealer/RAT/SSH-worm.
     # Detects the stage-2 drop paths, private Tor bootstrap, argv[0] masquerade and
-    # the security.selinux reinfection marker. See ATOMIC-005..008 in aur-scan 2.2.0.
+    # the security.selinux reinfection marker. See ATOMIC-005..008 in aur-scan 2.5.2.
     echo -e "\n${BOLD}[6/7] Wave-3 Loader-Check (Tor-C2, Stage-2, Persistenz)${NC}"
 
     # 1g-a: private Tor bootstrap artifacts under /tmp
@@ -2770,7 +2770,7 @@ show_help() {
     echo -e "  ./arch-shield.sh help          Diese Hilfe"
     echo ""
     echo -e "${BOLD}Was wird installiert?${NC}"
-    echo -e "  • aur-scanner (PKGBUILD Security Scanner, 87 Detektions-Regeln)"
+    echo -e "  • aur-scanner (PKGBUILD Security Scanner, 90 Detektions-Regeln)"
     echo -e "  • aur-malware-check (Community IOC-Datenbank, 1935+ infizierte Pakete)"
     echo -e "  • Shell-Integration (Scan vor jedem paru/yay Befehl)"
     echo -e "  • Pacman Pre-Install Hook (blockt Malware VOR Installation)"

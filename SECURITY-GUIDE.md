@@ -55,7 +55,7 @@ On **June 11, 2026**, a massive supply-chain attack on the **Arch User Repositor
 
 ### 1. System Scan: CLEAN ✅
 - **aur-malware-check** (community tool, 1,935 known infected packages): CLEAN
-- **aur-scan system** (87 detection rules): Only 1 false positive (google-chrome cron job with explanatory `rm -r` command)
+- **aur-scan system** (90 detection rules): Only 1 false positive (google-chrome cron job with explanatory `rm -r` command)
 - **eBPF Rootkit Check:** No hidden maps
 - **npm/bun Cache Check:** No malware packages
 - **systemd Persistence Check:** No suspicious services
@@ -199,7 +199,7 @@ The Atomic-Arch malware was loaded via npm `preinstall` hooks:
 
 | Component | Status | Location |
 |-----------|--------|----------|
-| **aur-scanner** (v2.0.0) | ✅ Installed | `/usr/bin/aur-scan` |
+| **aur-scanner** (v2.5.2) | ✅ Installed | `/usr/local/bin/aur-scan` |
 | **aur-malware-check** (v4.0) | ✅ Installed | `/tmp/aur-malware-check/` |
 | **Fish Shell Integration** | ✅ Enabled | `~/.config/fish/config.fish` |
 | **Pre-Install pacman Hook** | ⚠️ Manual required | `/etc/pacman.d/hooks/aur-scan-pre-install.hook` |

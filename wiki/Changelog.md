@@ -6,6 +6,29 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ---
 
+## [1.5.3] — 2026-09-26
+
+### Changed — aur-scanner-Pin aktualisiert: v2.2.0 → v2.5.2
+
+`install_aur_scanner()` klont beim Installieren des Scanners weiter das Fork-Repo, aber mit einem veralteten Versions-Pin: `--branch v2.2.0` (August). Seitdem hat der ks-aur-scanner drei Releases erhalten, die für die Detection relevant sind:
+
+- **v2.5.0** (2026-08-06): IOC-Datenbank-Erweiterung Runde 2 (PKGBUILD-/Snapshot-Hashes der Wave 3, X25519-C2-Pubkey, eBPF-Map-Namen, June-Wave-C2).
+- **v2.5.1** (2026-09-25): `validator` als 7. Disguise-Name in ATOMIC-011/012 — schließt die sudo-freie Ausführungsform des openconnect-sso-Anker-Pakets (Juli-2026-Wave) auf.
+- **v2.5.2** (2026-09-26): aur-scan-hook überspringt bei Multi-Package-Transaktionen das CRITICAL-Paket mit Warnung statt die gesamte Transaktion abzubrechen (Single-Package bleibt fail-closed); HIGH- und CRITICAL-Skip-Hinweise werden nun unabhängig ausgegeben.
+
+Ohne den Pin-Update würde eine Neuinstallation von arch-shield einen Scanner ohne diese Detection-Fähigkeiten bauen.
+
+- **Pin**: `git clone --branch v2.2.0` → `v2.5.2` (inkl. Log-Meldungen).
+- **Referenz-Kommentar** (Wave-3-Loader-Check): "aur-scan 2.2.0" → "aur-scan 2.5.2".
+- **Review-Nacharbeit (Zweit-Review)**: SECURITY-GUIDE.md-Tabelle der installierten Komponenten aktualisiert (aur-scanner v2.0.0/`/usr/bin/` → v2.5.2/`/usr/local/bin/`); Detektions-Regelzahl repo-weit 87 → 90 (README, README.de, SECURITY-GUIDE, Script — v2.5.2 lädt 90 Regeln, verifiziert via `aur-scan rules`).
+- **Version**: `SCRIPT_VERSION` 1.5.2 → 1.5.3.
+
+### Verified
+
+- **Syntax**: `bash -n` clean.
+- **Dual-LLM-Code-Review**: Code-Qualität + Security-Architektur.
+- **Getestet in Arch-Container**: Clone/Build des gepinnten v2.5.2-Tag verifiziert.
+
 ## [1.5.2] — 2026-09-05
 
 ### Fixed — Veraltete `/usr/bin/aur-scan`-Pfade (Fork-Installation)
@@ -210,6 +233,7 @@ over Tor disguised as `argv[0]=dbus-daemon`.
 | 1.5.0 | 2026-08-05 | Wave-3 loader/stealer coverage (Tor-C2, stage-2, dbus masquerade), C2 blocklist + torproject.org, aur-scanner v2.2.0 |
 | 1.5.1 | 2026-08-09 | Fix: `build_dir: unbound variable` crash + wirkungsloses Temp-Cleanup (globale Variable + EXIT-Trap), Fehlerisolierung in install_protection(), rules_file-Leak behoben |
 | 1.5.2 | 2026-09-05 | Fix: veraltete `/usr/bin/aur-scan`-Pfade in Pacman-Hooks + Weekly-Timer → `/usr/local/bin/` (Fork-Installation), `Depends = aur-scanner` aus Post-Install-Hook entfernt |
+| 1.5.3 | 2026-09-26 | aur-scanner-Pin v2.2.0 → v2.5.2 (validator-Disguise-Name, IOC-Runde-2, Multi-Package-Critical-Skip im Hook) |
 
 ---
 

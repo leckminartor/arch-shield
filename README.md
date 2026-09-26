@@ -7,7 +7,7 @@
 [![License](https://img.shields.io/badge/license-GPL--3.0-blue.svg)](LICENSE)
 [![Bash](https://img.shields.io/badge/bash-4%2B-green.svg)](https://www.gnu.org/software/bash/)
 [![Arch Linux](https://img.shields.io/badge/Arch%20Linux-supported-blue.svg)](https://archlinux.org)
-[![Version](https://img.shields.io/badge/version-1.5.2-green.svg)](https://github.com/leckminartor/arch-shield/releases)
+[![Version](https://img.shields.io/badge/version-1.5.3-green.svg)](https://github.com/leckminartor/arch-shield/releases)
 
 **[Deutsch](README.de.md)** | **English**
 
@@ -56,7 +56,7 @@ chmod +x arch-shield.sh
 
 The script has **7 modules**:
 
-1. **🔍 System Scan** — 6-layer scan: 1,935 IOC packages, static PKGBUILD analysis (87 rules), eBPF rootkit, npm/bun cache, systemd persistence, pacman log history
+1. **🔍 System Scan** — 6-layer scan: 1,935 IOC packages, static PKGBUILD analysis (90 rules), eBPF rootkit, npm/bun cache, systemd persistence, pacman log history
 2. **🛡️ Install Protection** — aur-scanner, aur-malware-check, shell integration, pre/post-install hooks, weekly systemd timer
 3. **🔧 Harden System** — eBPF hardening, build isolation (chroot), repo SigLevel verification, AUR helper configuration, firewall status
 4. **📊 Status** — Overview of all installed protection measures
@@ -66,7 +66,7 @@ The script has **7 modules**:
 
 ## What Gets Installed
 
-- **aur-scanner** — PKGBUILD security scanner with 87 detection rules
+- **aur-scanner** — PKGBUILD security scanner with 90 detection rules
 - **aur-malware-check** — Community IOC database with 1,935+ infected packages
 - **Shell Integration** — Scans before every `paru`/`yay` command (bash, zsh, fish, nu)
 - **Pacman Pre-Install Hook** — Blocks malware before installation (`AbortOnFail`)
@@ -79,7 +79,7 @@ The script has **7 modules**:
 ## What the Scan Checks
 
 1. **1,935+ known infected packages** — Cross-referenced with community IOC database
-2. **Static PKGBUILD analysis** — 87 detection rules (Reverse Shells, Credential Theft, eBPF Rootkit, Cryptominer, Obfuscation, ...)
+2. **Static PKGBUILD analysis** — 90 detection rules (Reverse Shells, Credential Theft, eBPF Rootkit, Cryptominer, Obfuscation, ...)
 3. **eBPF rootkit traces** — `/sys/fs/bpf/hidden_*` maps
 4. **npm/bun cache** — Malicious packages (atomic-lockfile, js-digest, lockfile-js)
 5. **systemd persistence** — Suspicious services with `Restart=always`
