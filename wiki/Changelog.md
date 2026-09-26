@@ -6,6 +6,35 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ---
 
+## [1.5.4] — 2026-09-26
+
+### Changed — aur-scanner-Pin v2.5.2 → v2.5.3 (ehrliche Multi-Package-Semantik)
+
+Kurz nach dem v1.5.3-Pin-Update ergab der Security-Architektur-Nachreview des
+v2.5.2-Merges einen fundamentalen Befund: Die "Skip"-Semantik des aur-scan-hooks
+war nicht real — ein pacman-PreTransaction-Hook kann keine einzelnen Targets
+entfernen; das CRITICAL-Paket wurde mitinstalliert, während die Warnung das
+Gegenteil behauptete (False Assurance). v2.5.3 korrigiert das:
+
+- **Ehrliche Warnung**: benennt die betroffenen Pakete und sagt ausdrücklich,
+  dass sie MITINSTALLIERT werden, sofern der Nutzer nicht abbricht; inkl.
+  Config-Hinweis für fail-closed.
+- **Neue Config-Option** `multi_package_policy = "warn" | "abort"` (Default
+  `warn`) in `/etc/aur-scanner/config.toml` — `abort` stellt fail-closed für
+  ALLE Transaktionsgrößen wieder her.
+- `decide_hook_outcome` mit Policy-Parameter; Semantik-Doku im
+  `MultiPackagePolicy`-Enum; CHANGELOG-Korrekturblock im 2.5.2-Eintrag.
+
+- **Pin**: `git clone --branch v2.5.2` → `v2.5.3` (4 Stellen inkl. Log-Meldungen).
+- **Version**: `SCRIPT_VERSION` 1.5.3 → 1.5.4.
+
+### Verified
+
+- **Syntax**: `bash -n` clean.
+- **Dual-LLM-Review** des v2.5.3-Fixes: APPROVED (beide Reviewer, alle 4 Forderungen).
+- **Getestet im Arch-Container**: ks-aur-scanner v2.5.3 317/317 Tests grün
+  (inkl. multi_package_policy-Tests); Pin-Tag v2.5.3 am Fork verifiziert.
+
 ## [1.5.3] — 2026-09-26
 
 ### Changed — aur-scanner-Pin aktualisiert: v2.2.0 → v2.5.2
@@ -234,6 +263,7 @@ over Tor disguised as `argv[0]=dbus-daemon`.
 | 1.5.1 | 2026-08-09 | Fix: `build_dir: unbound variable` crash + wirkungsloses Temp-Cleanup (globale Variable + EXIT-Trap), Fehlerisolierung in install_protection(), rules_file-Leak behoben |
 | 1.5.2 | 2026-09-05 | Fix: veraltete `/usr/bin/aur-scan`-Pfade in Pacman-Hooks + Weekly-Timer → `/usr/local/bin/` (Fork-Installation), `Depends = aur-scanner` aus Post-Install-Hook entfernt |
 | 1.5.3 | 2026-09-26 | aur-scanner-Pin v2.2.0 → v2.5.2 (validator-Disguise-Name, IOC-Runde-2, Multi-Package-Critical-Skip im Hook) |
+| 1.5.4 | 2026-09-26 | aur-scanner-Pin v2.5.2 → v2.5.3 (ehrliche Multi-Package-Warnung, `multi_package_policy`-Config warn|abort, False-Assurance-Fix) |
 
 ---
 

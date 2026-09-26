@@ -15,7 +15,7 @@ set -euo pipefail
 IFS=$'\n\t'
 
 # ── Globale Variablen ──────────────────────────────────────────────────────────
-SCRIPT_VERSION="1.5.3"
+SCRIPT_VERSION="1.5.4"
 SCRIPT_NAME="arch-shield"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PYTHON_BIN=""
@@ -251,7 +251,7 @@ install_aur_scanner() {
         return 0
     fi
 
-    log_inf "Installiere aur-scanner aus Fork-Repo (v2.5.2 mit Wave-3-Regeln + validator + Multi-Package-Skip)..."
+    log_inf "Installiere aur-scanner aus Fork-Repo (v2.5.3 mit Wave-3-Regeln + validator + ehrlicher Multi-Package-Policy)..."
 
     # SUDO/doas Kommando ermitteln (nicht mit "sudo" überschreiben!)
     if [[ -z "$SUDO_BIN" ]]; then
@@ -293,8 +293,8 @@ install_aur_scanner() {
         return 1
     }
 
-    log_inf "Klone Fork-Repo und baue aur-scanner v2.5.2..."
-    if git clone --depth 1 --branch v2.5.2 --quiet "https://github.com/leckminartor/ks-aur-scanner.git" "$AUR_SCAN_BUILD_DIR" 2>/dev/null; then
+    log_inf "Klone Fork-Repo und baue aur-scanner v2.5.3..."
+    if git clone --depth 1 --branch v2.5.3 --quiet "https://github.com/leckminartor/ks-aur-scanner.git" "$AUR_SCAN_BUILD_DIR" 2>/dev/null; then
         cd "$AUR_SCAN_BUILD_DIR" || { log_err "cd in Build-Dir fehlgeschlagen"; return 1; }
 
         # --locked nur wenn Cargo.lock existiert, --workspace statt deprecated --all
@@ -320,7 +320,7 @@ install_aur_scanner() {
             # pacman hook example
             $SUDO_BIN install -Dm644 "install/aur-scan.hook" "/usr/share/aur-scan/aur-scan.hook.example"
 
-            log_ok "aur-scanner v2.5.2 installiert (aus Fork-Repo)"
+            log_ok "aur-scanner v2.5.3 installiert (aus Fork-Repo)"
             AUR_SCANNER_INSTALLED=true
             cd - >/dev/null
             return 0
@@ -458,7 +458,7 @@ run_full_scan() {
     # ── 1g: Wave-3 (Juli/Aug 2026) Two-Stage Loader-Check ─────────────────────────
     # Atomic Arch Wave 3: C loader (root via build()) + Rust infostealer/RAT/SSH-worm.
     # Detects the stage-2 drop paths, private Tor bootstrap, argv[0] masquerade and
-    # the security.selinux reinfection marker. See ATOMIC-005..008 in aur-scan 2.5.2.
+    # the security.selinux reinfection marker. See ATOMIC-005..008 in aur-scan 2.5.3.
     echo -e "\n${BOLD}[6/7] Wave-3 Loader-Check (Tor-C2, Stage-2, Persistenz)${NC}"
 
     # 1g-a: private Tor bootstrap artifacts under /tmp
