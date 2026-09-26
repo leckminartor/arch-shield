@@ -2147,7 +2147,7 @@ update_threat_intel() {
         ioc_count=$(aur-scan ioc 2>/dev/null | grep "Indicators" | grep -oE '[0-9]+' || echo "?")
         log_ok "aur-scanner IOC-Datenbank: $ioc_count Indikatoren"
         echo -e "  ${DIM}Letzte Aktualisierung: $(aur-scan ioc 2>/dev/null | grep 'Last updated' | cut -d: -f2 | xargs || echo 'unbekannt')${NC}"
-        echo -e "  ${DIM}Update-Option: pacman -S aur-scanner (AUR) für neue Version${NC}"
+        echo -e "  ${DIM}Update-Option: Neu-Ausführung von arch-shield (baut den aktuell gepinnten ks-aur-scanner-Tag aus dem Fork) — NICHT 'pacman -S aur-scanner' (AUR-Paket ist veraltet/v2.0.0 und wäre ein Downgrade)${NC}"
     else
         log_wrn "aur-scanner nicht installiert"
     fi

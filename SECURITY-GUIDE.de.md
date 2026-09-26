@@ -199,7 +199,7 @@ Die Atomic-Arch-Malware wurde über npm `preinstall`-Hooks geladen:
 
 | Komponente | Status | Ort |
 |------------|--------|-----|
-| **aur-scanner** (v2.0.0) | ✅ Installiert | `/usr/bin/aur-scan` |
+| **aur-scanner** (v2.5.3) | ✅ Installiert | `/usr/local/bin/aur-scan` |
 | **aur-malware-check** (v4.0) | ✅ Installiert | `/tmp/aur-malware-check/` |
 | **Fish-Shell-Integration** | ✅ Aktiviert | `~/.config/fish/config.fish` |
 | **Pre-Install pacman-Hook** | ⚠️ Manuell nötig | `/etc/pacman.d/hooks/aur-scan-pre-install.hook` |

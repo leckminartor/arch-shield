@@ -27,6 +27,15 @@ Gegenteil behauptete (False Assurance). v2.5.3 korrigiert das:
 
 - **Pin**: `git clone --branch v2.5.2` → `v2.5.3` (4 Stellen inkl. Log-Meldungen).
 - **Version**: `SCRIPT_VERSION` 1.5.3 → 1.5.4.
+- **Zweit-Review-Nacharbeit** (verspätet eingetroffene Voll-Findings des 1.5.3-Reviews):
+  - Status-Anzeige (Z.2150): Der Hinweis "pacman -S aur-scanner (AUR) für neue Version"
+    war ein Downgrade-Pfad — das AUR-Paket ist v2.0.0 und seit dem Fork-Build obsolet.
+    Jetzt: Neu-Ausführung von arch-shield baut den aktuell gepinnten Fork-Tag.
+  - SECURITY-GUIDE.de.md: Komponententabelle zeigte noch v2.0.0 + falschen
+    `/usr/bin/`-Pfad → v2.5.3 / `/usr/local/bin/` (die englische Version war in
+    v1.5.3 bereits korrigiert worden, die deutsche verpasst).
+  - Detektions-Regelzahl: bereits in v1.5.3 von 87 → 90 synchronisiert (autoritativ
+    nachgemessen via `aur-scan rules`: 90 statische Regeln in v2.5.3).
 
 ### Verified
 
