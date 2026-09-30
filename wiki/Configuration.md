@@ -43,10 +43,16 @@ arch-shield installs a pre-scan hook into your shell configuration. When you run
 
 | Shell | Config File | Integration Method |
 |-------|-------------|---------------------|
-| **bash** | `~/.bashrc` | Function wrapper around `paru`/`yay` |
-| **zsh** | `~/.zshrc` | Function wrapper |
-| **fish** | `~/.config/fish/config.fish` | Function definition |
-| **nu (Nushell)** | `~/.config/nushell/env.nu` | Custom command |
+| **bash** | `~/.bashrc` | Function wrapper around `paru`/`yay`, guarded `source` block |
+| **zsh** | `~/.zshrc` | Function wrapper, guarded `source` block |
+| **fish** | `~/.config/fish/config.fish` | Function definition, guarded `source` block |
+| **nu (Nushell)** | `~/.config/nushell/env.nu` | Custom command, guarded `source` block |
+
+Since v1.5.5 the `source /usr/share/aur-scan/integration.*` line is written
+**guarded** (`if <file exists>`) in every shell config, and existing bare lines
+are migrated automatically on the next arch-shield run. A missing or removed
+integration file therefore no longer produces shell-startup errors — the guard
+silently skips and arch-shield's repair path restores the file on the next run.
 
 ### What the integration does
 

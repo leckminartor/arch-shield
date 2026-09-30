@@ -62,7 +62,7 @@ On **June 11, 2026**, a massive supply-chain attack on the **Arch User Repositor
 - **pacman.log History:** No infected installations
 
 ### 2. Fish Shell Integration Enabled ✅
-- `source /usr/share/aur-scan/integration.fish` added to `~/.config/fish/config.fish`
+- Guarded source block added to `~/.config/fish/config.fish` (v1.5.5: `if test -f ...; source ...; end` — no shell-startup errors if the file is ever removed)
 - Automatically scans before every `paru -S` / `paru -Syu` command
 - Interactive mode: prompts before installation when threats are found
 

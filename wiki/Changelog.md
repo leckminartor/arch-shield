@@ -6,6 +6,73 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ---
 
+## [1.5.5] — 2026-09-30
+
+### Fixed — Shell-Startfehler bei fehlenden aur-scan-Integrations-Dateien (alle Distributionen/Shells)
+
+Gemeldetes Symptom (SSH-Login auf fremdem Host): Jede fish-Shell crashte beim Start
+mit `source: Fehler beim Einladen von '/usr/share/aur-scan/integration.fish'`,
+weil in der Shell-Config eine **bare** (ungeschützte) `source`-Zeile stand und die
+Datei auf dem Zielsystem fehlte (Binary vorhanden, `/usr/share/aur-scan/` leer).
+Das betraf alle Shells (bash/zsh/fish/nu) und alle unterstützten Distributionen,
+auf denen arch-shield die Shell-Integration eingerichtet hatte und die
+Dateien später verschwanden (AUR-Removal, pacman-Cleanup, Teildeinstallation).
+
+**1) Guarded source-Blöcke statt bare `source`-Zeile** (`install_shell_integration`):
+arch-shield schreibt jetzt einen existenzgeprüften Block in die jeweilige Shell-Config,
+sodass ein fehlendes File die Shell-Start nicht mehr stört:
+
+| Shell | Generierter Guard |
+|-------|-------------------|
+| bash | `if [[ -f /usr/share/aur-scan/integration.bash ]]; then source ...; fi` |
+| zsh | `if [[ -f /usr/share/aur-scan/integration.zsh ]]; then source ...; fi` |
+| fish | `if test -f /usr/share/aur-scan/integration.fish; source ...; end` |
+| nu | `if ('/usr/share/aur-scan/integration.nu' \| path exists) { source ... }` |
+
+**2) Migration bestehender Installationen** (`migrate_shell_integration`):
+Vorhandene bare-Zeilen werden idempotent auskommentiert und durch den guarded
+Block (Marker: `# arch-shield: guarded aur-scan source`) am Dateiende ersetzt —
+auch Whitespace-/Indentations-Varianten werden erfasst. DRY_RUN zeigt die
+Migration nur an.
+
+**3) Repair-Pfad bei vorhandenem Binary** (`install_aur_scanner`):
+Bisher meldete arch-shield "bereits installiert" und prüfte nicht, ob die
+Integrations-Dateien noch da sind (genau der Zustand: Binary ja, Files nein →
+Guard macht den Scan still abgeschaltet). Jetzt: Bei `aur-scan`-Binary ohne
+vollständige Integrations-Dateien repariert die neue Funktion
+`repair_aur_scanner_files()` die vier Dateien:
+
+- Download des **signed Release-Tags** (`AUR_SCANNER_PIN`, momentan v2.5.3) als
+  codeload-Tarball via curl/wget (60-s-Timeout),
+- **SHA256-Integritätsprüfung** vor dem Entpacken gegen eingebrannten Hash —
+  Mismatch bricht den Repair hart ab (Supply-Chain-Schutz),
+- Installation ausschließlich als `install -Dm644` (root:root, keine exec-Bits,
+  nichts wird ausgeführt — kein `curl \| sudo bash`-Muster),
+- Temp-Verzeichnis via mktemp mit Cleanup.
+
+**4) Single Source of Truth für den Pin** (`AUR_SCANNER_PIN`):
+Build-Klon, Repair-Download und Log-Meldungen lesen jetzt dieselbe Konstante
+statt duplizierter "v2.5.3"-Strings.
+
+### Changed
+
+- `SCRIPT_VERSION` 1.5.4 → 1.5.5.
+
+### Verified
+
+- **Syntax**: `bash -n` clean.
+- **Dual-LLM-Review**: Cross-Review mit nemotron-3-ultra (Ollama Cloud);
+  alle kritischen Findings (Checksum, stille return-0-Fehler, sed-Robustheit,
+  nu-Löschpräzision, grep -q, Pin-Dedupe) umgesetzt.
+- **Distrobox (Arch, aur-shield-test)**:
+  - Migration: bare-Zeile → guarded Block, idempotent (2. Lauf = no-op) ✓
+  - Repair: Fake-Binary + geleertes `/usr/share/aur-scan/` → SHA256-Prüfung
+    bestanden, 4 Dateien wiederhergestellt (644) ✓
+  - fish lädt config.fish ohne Fehler; `paru` ist Wrapper-Funktion aus der
+    Integration ✓
+  - Negativtest: Integrations-Datei temporär entfernt → fish-Start rc=0,
+    Guard greift wie erwartet ✓
+
 ## [1.5.4] — 2026-09-26
 
 ### Changed — aur-scanner-Pin v2.5.2 → v2.5.3 (ehrliche Multi-Package-Semantik)
@@ -273,6 +340,7 @@ over Tor disguised as `argv[0]=dbus-daemon`.
 | 1.5.2 | 2026-09-05 | Fix: veraltete `/usr/bin/aur-scan`-Pfade in Pacman-Hooks + Weekly-Timer → `/usr/local/bin/` (Fork-Installation), `Depends = aur-scanner` aus Post-Install-Hook entfernt |
 | 1.5.3 | 2026-09-26 | aur-scanner-Pin v2.2.0 → v2.5.2 (validator-Disguise-Name, IOC-Runde-2, Multi-Package-Critical-Skip im Hook) |
 | 1.5.4 | 2026-09-26 | aur-scanner-Pin v2.5.2 → v2.5.3 (ehrliche Multi-Package-Warnung, `multi_package_policy`-Config warn|abort, False-Assurance-Fix) |
+| 1.5.5 | 2026-09-30 | Fix: Guarded shell-integration source (alle 4 Shells) + Migration bare→guarded + Repair fehlender Integrations-Dateien (SHA256-verifiziert) |
 
 ---
 
