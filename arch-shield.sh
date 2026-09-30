@@ -28,6 +28,9 @@ USER_SHELL_CONFIG=""
 AUR_SCAN_CHECK_DIR=""
 AUR_SCAN_BUILD_DIR=""
 AUR_SCANNER_INSTALLED=false
+# aur-scanner Release-Tag, auf den arch-shield pinnt (single source of truth für
+# Build-Klon, Repair-Download und Log-Meldungen).
+AUR_SCANNER_PIN="v2.5.3"
 LOG_DIR="$HOME/.local/share/arch-shield"
 LOG_FILE="$LOG_DIR/arch-shield.log"
 DRY_RUN=false
@@ -248,10 +251,16 @@ install_aur_malware_check() {
 # Sicherheitsmodell: die Dateien werden heruntergeladen, in ein user-lesbares
 # Temp-Verzeichnis entpackt und mit `install -m644` kopiert — keine exec-Bits,
 # nichts wird ausgeführt, kein curl|sudo-bash-Muster. Die Dateien stammen aus
-# demselben signed Release-Tag v2.5.3 wie der sonstige aur-scanner-Install-Pfad.
+# demselben signed Release-Tag wie der sonstige aur-scanner-Install-Pfad
+# ($AUR_SCANNER_PIN) und der Download wird per SHA256 gegen einen eingebrannten
+# Hash verifiziert, bevor irgendetwas installiert wird.
 repair_aur_scanner_files() {
-    local pin="v2.5.3"
+    local pin="$AUR_SCANNER_PIN"
     local url="https://github.com/leckminartor/ks-aur-scanner/archive/refs/tags/${pin}.tar.gz"
+    # SHA256 des Release-Tarballs (github-codeload, deterministisch für den Tag).
+    # Supply-Chain-Schutz: Datei wird NIE ausgeführt, aber die Integritätsprüfung
+    # verhindert, dass manipulierte Integrations-Dateien in /usr/share landen.
+    local expected_sha256="56daa09e63a1ee02327d9b972c1f30aae9dfae4aa1c6b52d5c47990d086d092f"
     local tmp=""
     tmp=$(mktemp -d -t arch-shield-integration-repair.XXXXXX) || { log_err "mktemp fehlgeschlagen"; return 1; }
 
@@ -274,6 +283,17 @@ repair_aur_scanner_files() {
             ;;
     esac
 
+    # Integritätsprüfung (Supply-Chain-Schutz), VOR dem Entpacken
+    local actual_sha256=""
+    actual_sha256=$(sha256sum "$tmp/src.tar.gz" 2>/dev/null | awk '{print $1}')
+    if [[ "$actual_sha256" != "$expected_sha256" ]]; then
+        log_err "SHA256-Mismatch beim Release-Tarball (erwartet $expected_sha256, bekommen ${actual_sha256:-nichts})"
+        log_err "Repair ABGEBROCHEN — bitte aur-scanner manuell über AUR installieren: paru -S aur-scanner"
+        rm -rf "$tmp"
+        return 1
+    fi
+    log_ok "SHA256-Prüfung des Release-Tarballs bestanden"
+
     tar -xzf "$tmp/src.tar.gz" -C "$tmp" || { log_err "Entpacken fehlgeschlagen"; rm -rf "$tmp"; return 1; }
     local src_dir="$tmp/ks-aur-scanner-${pin#v}/install"
     [[ -d "$src_dir" ]] || { log_err "Integrations-Dateien nicht im Archiv gefunden"; rm -rf "$tmp"; return 1; }
@@ -281,13 +301,13 @@ repair_aur_scanner_files() {
     # Files sind Shell/Nushell-Quelltext: 644 root:root, keine exec-Bits, nichts
     # wird je ausgeführt — identisch zur package()-Installation im AUR-Paket.
     $SUDO_BIN mkdir -p /usr/share/aur-scan
-    local ok=true
+    local ok=0
+    local f=""
     for f in integration.bash integration.zsh integration.fish integration.nu; do
-        $SUDO_BIN install -Dm644 "$src_dir/$f" "/usr/share/aur-scan/$f" || ok=false
+        $SUDO_BIN install -Dm644 "$src_dir/$f" "/usr/share/aur-scan/$f" || ok=1
     done
     rm -rf "$tmp"
-    [[ "$ok" == true ]] && return 0
-    return 1
+    return "$ok"
 }
 
 install_aur_scanner() {
@@ -308,18 +328,19 @@ install_aur_scanner() {
         if [[ $missing -eq 1 ]]; then
             log_wrn "aur-scan Binaries vorhanden, aber Shell-Integrations-Dateien fehlen/unvollständig in $repair_dir"
             if [[ -z "$SUDO_BIN" ]]; then
-                find_sudo || { log_err "Kein sudo/doas gefunden — Repair übersprungen."; return 0; }
+                find_sudo || { log_err "Kein sudo/doas gefunden — Repair übersprungen."; return 1; }
             fi
             if repair_aur_scanner_files; then
                 log_ok "Shell-Integrations-Dateien wiederhergestellt."
             else
                 log_wrn "Repair der Shell-Integrations-Dateien fehlgeschlagen."
+                return 1
             fi
         fi
         return 0
     fi
 
-    log_inf "Installiere aur-scanner aus Fork-Repo (v2.5.3 mit Wave-3-Regeln + validator + ehrlicher Multi-Package-Policy)..."
+    log_inf "Installiere aur-scanner aus Fork-Repo ($AUR_SCANNER_PIN mit Wave-3-Regeln + validator + ehrlicher Multi-Package-Policy)..."
 
     # SUDO/doas Kommando ermitteln (nicht mit "sudo" überschreiben!)
     if [[ -z "$SUDO_BIN" ]]; then
@@ -361,8 +382,8 @@ install_aur_scanner() {
         return 1
     }
 
-    log_inf "Klone Fork-Repo und baue aur-scanner v2.5.3..."
-    if git clone --depth 1 --branch v2.5.3 --quiet "https://github.com/leckminartor/ks-aur-scanner.git" "$AUR_SCAN_BUILD_DIR" 2>/dev/null; then
+    log_inf "Klone Fork-Repo und baue aur-scanner $AUR_SCANNER_PIN..."
+    if git clone --depth 1 --branch "$AUR_SCANNER_PIN" --quiet "https://github.com/leckminartor/ks-aur-scanner.git" "$AUR_SCAN_BUILD_DIR" 2>/dev/null; then
         cd "$AUR_SCAN_BUILD_DIR" || { log_err "cd in Build-Dir fehlgeschlagen"; return 1; }
 
         # --locked nur wenn Cargo.lock existiert, --workspace statt deprecated --all
@@ -388,7 +409,7 @@ install_aur_scanner() {
             # pacman hook example
             $SUDO_BIN install -Dm644 "install/aur-scan.hook" "/usr/share/aur-scan/aur-scan.hook.example"
 
-            log_ok "aur-scanner v2.5.3 installiert (aus Fork-Repo)"
+            log_ok "aur-scanner $AUR_SCANNER_PIN installiert (aus Fork-Repo)"
             AUR_SCANNER_INSTALLED=true
             cd - >/dev/null
             return 0
@@ -697,13 +718,13 @@ install_shell_integration() {
     # lets arch-shield re-add the source statement when aur-scan returns.
     migrate_shell_integration() {
         [[ -f "$USER_SHELL_CONFIG" ]] || return 0
-        [[ $(grep -c 'source /usr/share/aur-scan/integration' "$USER_SHELL_CONFIG" 2>/dev/null) -gt 0 ]] || return 0
+        grep -q 'source /usr/share/aur-scan/integration' "$USER_SHELL_CONFIG" 2>/dev/null || return 0
 
         local guard_line=""
         case "$USER_SHELL" in
             fish) guard_line='if test -f /usr/share/aur-scan/integration.fish' ;;
             zsh)  guard_line='if [[ -f /usr/share/aur-scan/integration.zsh ]]; then' ;;
-            nu)   guard_line='if (' ;;
+            nu)   guard_line="if (('/usr/share/aur-scan/integration.nu' | path exists) == \$true) {" ;;
             bash) guard_line='if [[ -f /usr/share/aur-scan/integration.bash ]]; then' ;;
         esac
         [[ -n "$guard_line" ]] || return 0
@@ -732,9 +753,9 @@ install_shell_integration() {
         # For nushell the guard must wrap the source line itself, so we can't just
         # comment it out — remove the line and let the append below re-add it guarded.
         if [[ "$USER_SHELL" == "nu" ]]; then
-            sed -i '\|source /usr/share/aur-scan/integration\.nu|d' "$USER_SHELL_CONFIG"
+            sed -i -E '\|^[[:space:]]*source[[:space:]]+/usr/share/aur-scan/integration\.nu[[:space:]]*$|d' "$USER_SHELL_CONFIG"
         else
-            sed -i "s|^source /usr/share/aur-scan/integration\.$ext$|# arch-shield: bare source guarded (v1.5.5): see guarded block at end of file\n# source /usr/share/aur-scan/integration.$ext|" "$USER_SHELL_CONFIG"
+            sed -i -E "s|^[[:space:]]*source[[:space:]]+/usr/share/aur-scan/integration\.$ext[[:space:]]*$|# arch-shield: bare source guarded (v1.5.5): see guarded block at end of file\n# source /usr/share/aur-scan/integration.$ext|" "$USER_SHELL_CONFIG"
         fi
         {
             echo ""
