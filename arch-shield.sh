@@ -15,7 +15,7 @@ set -euo pipefail
 IFS=$'\n\t'
 
 # ── Globale Variablen ──────────────────────────────────────────────────────────
-SCRIPT_VERSION="1.5.4"
+SCRIPT_VERSION="1.5.5"
 SCRIPT_NAME="arch-shield"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PYTHON_BIN=""
@@ -244,10 +244,78 @@ install_aur_malware_check() {
 }
 
 # ── aur-scanner installieren (aus Fork-Repo) ────────────────────────────────────
+# Repair-Pfad: nur die shell-Integrations-Dateien neu installieren (kein rebuild).
+# Sicherheitsmodell: die Dateien werden heruntergeladen, in ein user-lesbares
+# Temp-Verzeichnis entpackt und mit `install -m644` kopiert — keine exec-Bits,
+# nichts wird ausgeführt, kein curl|sudo-bash-Muster. Die Dateien stammen aus
+# demselben signed Release-Tag v2.5.3 wie der sonstige aur-scanner-Install-Pfad.
+repair_aur_scanner_files() {
+    local pin="v2.5.3"
+    local url="https://github.com/leckminartor/ks-aur-scanner/archive/refs/tags/${pin}.tar.gz"
+    local tmp=""
+    tmp=$(mktemp -d -t arch-shield-integration-repair.XXXXXX) || { log_err "mktemp fehlgeschlagen"; return 1; }
+
+    local fetcher=""
+    if command_exists curl; then fetcher="curl"
+    elif command_exists wget; then fetcher="wget"
+    else
+        log_wrn "Weder curl noch wget verfügbar — Repair nicht möglich."
+        rm -rf "$tmp"
+        return 1
+    fi
+
+    log_inf "Lade Shell-Integrations-Dateien aus Release ${pin}..."
+    case "$fetcher" in
+        curl)
+            curl -fsSL --max-time 60 -o "$tmp/src.tar.gz" "$url" || { log_err "Download fehlgeschlagen"; rm -rf "$tmp"; return 1; }
+            ;;
+        wget)
+            wget -q --timeout=60 -O "$tmp/src.tar.gz" "$url" || { log_err "Download fehlgeschlagen"; rm -rf "$tmp"; return 1; }
+            ;;
+    esac
+
+    tar -xzf "$tmp/src.tar.gz" -C "$tmp" || { log_err "Entpacken fehlgeschlagen"; rm -rf "$tmp"; return 1; }
+    local src_dir="$tmp/ks-aur-scanner-${pin#v}/install"
+    [[ -d "$src_dir" ]] || { log_err "Integrations-Dateien nicht im Archiv gefunden"; rm -rf "$tmp"; return 1; }
+
+    # Files sind Shell/Nushell-Quelltext: 644 root:root, keine exec-Bits, nichts
+    # wird je ausgeführt — identisch zur package()-Installation im AUR-Paket.
+    $SUDO_BIN mkdir -p /usr/share/aur-scan
+    local ok=true
+    for f in integration.bash integration.zsh integration.fish integration.nu; do
+        $SUDO_BIN install -Dm644 "$src_dir/$f" "/usr/share/aur-scan/$f" || ok=false
+    done
+    rm -rf "$tmp"
+    [[ "$ok" == true ]] && return 0
+    return 1
+}
+
 install_aur_scanner() {
     if command_exists aur-scan; then
         log_ok "aur-scanner bereits installiert ($(aur-scan version 2>/dev/null | grep -o 'v[0-9.]*' | head -1))"
         AUR_SCANNER_INSTALLED=true
+
+        # Repair: binary can exist while the shell-integration files are gone
+        # (partial removal, pacman cleanup, manual deletion). Without the files
+        # the guarded source in the shell rc becomes a no-op — silently
+        # disabling the pre-install scan. Verify and re-install them.
+        local repair_dir="/usr/share/aur-scan"
+        local missing=0
+        local f=""
+        for f in integration.bash integration.zsh integration.fish integration.nu; do
+            [[ -f "$repair_dir/$f" ]] || { missing=1; break; }
+        done
+        if [[ $missing -eq 1 ]]; then
+            log_wrn "aur-scan Binaries vorhanden, aber Shell-Integrations-Dateien fehlen/unvollständig in $repair_dir"
+            if [[ -z "$SUDO_BIN" ]]; then
+                find_sudo || { log_err "Kein sudo/doas gefunden — Repair übersprungen."; return 0; }
+            fi
+            if repair_aur_scanner_files; then
+                log_ok "Shell-Integrations-Dateien wiederhergestellt."
+            else
+                log_wrn "Repair der Shell-Integrations-Dateien fehlgeschlagen."
+            fi
+        fi
         return 0
     fi
 
@@ -622,13 +690,89 @@ install_shell_integration() {
             ;;
     esac
 
+    # Guarded source block: each shell has its own existence-check syntax.
+    # Rationale: a bare "source /usr/share/aur-scan/integration.fish" in the shell
+    # rc makes EVERY shell startup print an error once the file disappears (AUR
+    # package removal, uninstall, cleanup). The guard makes the line harmless and
+    # lets arch-shield re-add the source statement when aur-scan returns.
+    migrate_shell_integration() {
+        [[ -f "$USER_SHELL_CONFIG" ]] || return 0
+        [[ $(grep -c 'source /usr/share/aur-scan/integration' "$USER_SHELL_CONFIG" 2>/dev/null) -gt 0 ]] || return 0
+
+        local guard_line=""
+        case "$USER_SHELL" in
+            fish) guard_line='if test -f /usr/share/aur-scan/integration.fish' ;;
+            zsh)  guard_line='if [[ -f /usr/share/aur-scan/integration.zsh ]]; then' ;;
+            nu)   guard_line='if (' ;;
+            bash) guard_line='if [[ -f /usr/share/aur-scan/integration.bash ]]; then' ;;
+        esac
+        [[ -n "$guard_line" ]] || return 0
+
+        # Idempotent: migrate only if the guarded block is not already present.
+        # Marker comment is the discriminator — shell-syntax matching is unreliable
+        # (e.g. "if (" would match every nushell conditional).
+        if grep -qF "# arch-shield: guarded aur-scan source" "$USER_SHELL_CONFIG"; then
+            log_ok "Shell-Integration bereits abgesichert (guarded) in $USER_SHELL_CONFIG"
+            return 0
+        fi
+
+        local ext="fish"
+        case "$USER_SHELL" in
+            zsh) ext="zsh" ;;
+            nu) ext="nu" ;;
+            bash) ext="bash" ;;
+        esac
+
+        [[ "$DRY_RUN" == "true" ]] && {
+            echo -e "  ${DIM}[DRY-RUN] Würde bare source-Zeile in $USER_SHELL_CONFIG absichern (guard fehlt).${NC}"
+            return 0
+        }
+
+        # Comment out the bare line, append the guarded block at the file end.
+        # For nushell the guard must wrap the source line itself, so we can't just
+        # comment it out — remove the line and let the append below re-add it guarded.
+        if [[ "$USER_SHELL" == "nu" ]]; then
+            sed -i '\|source /usr/share/aur-scan/integration\.nu|d' "$USER_SHELL_CONFIG"
+        else
+            sed -i "s|^source /usr/share/aur-scan/integration\.$ext$|# arch-shield: bare source guarded (v1.5.5): see guarded block at end of file\n# source /usr/share/aur-scan/integration.$ext|" "$USER_SHELL_CONFIG"
+        fi
+        {
+            echo ""
+            echo "# arch-shield: guarded aur-scan source (added by arch-shield v1.5.5)"
+            case "$USER_SHELL" in
+                fish)
+                    echo "if test -f /usr/share/aur-scan/integration.fish"
+                    echo "    source /usr/share/aur-scan/integration.fish"
+                    echo "end"
+                    ;;
+                zsh)
+                    echo "if [[ -f /usr/share/aur-scan/integration.zsh ]]; then"
+                    echo "    source /usr/share/aur-scan/integration.zsh"
+                    echo "fi"
+                    ;;
+                nu)
+                    echo "if ('/usr/share/aur-scan/integration.nu' | path exists) {"
+                    echo "    source /usr/share/aur-scan/integration.nu"
+                    echo "}"
+                    ;;
+                bash)
+                    echo "if [[ -f /usr/share/aur-scan/integration.bash ]]; then"
+                    echo "    source /usr/share/aur-scan/integration.bash"
+                    echo "fi"
+                    ;;
+            esac
+        } >> "$USER_SHELL_CONFIG"
+        log_ok "Bare source-Zeile in $USER_SHELL_CONFIG abgeschichert (guard hinzugefügt)"
+    }
+    migrate_shell_integration
+
     if [[ -z "$integration_file" || ! -f "$integration_file" ]]; then
         log_wrn "Keine aur-scan-Integration für $USER_SHELL gefunden unter $integration_file"
         echo -e "  ${DIM}aur-scanner muss zuerst installiert werden.${NC}"
         return 1
     fi
 
-    # Prüfen ob bereits eingebunden
+    # Prüfen ob bereits eingebunden (guarded block ODER bare legacy line)
     if [[ -f "$USER_SHELL_CONFIG" ]] && grep -q "aur-scan/integration" "$USER_SHELL_CONFIG"; then
         log_ok "Shell-Integration bereits aktiv in $USER_SHELL_CONFIG"
         return 0
@@ -643,7 +787,28 @@ install_shell_integration() {
     {
         echo ""
         echo "# arch-shield: AUR Security Scanner — scannt vor AUR-Installationen"
-        echo "source $integration_file"
+        case "$USER_SHELL" in
+            fish)
+                echo "if test -f /usr/share/aur-scan/integration.fish"
+                echo "    source /usr/share/aur-scan/integration.fish"
+                echo "end"
+                ;;
+            zsh)
+                echo "if [[ -f /usr/share/aur-scan/integration.zsh ]]; then"
+                echo "    source /usr/share/aur-scan/integration.zsh"
+                echo "fi"
+                ;;
+            nu)
+                echo "if ('/usr/share/aur-scan/integration.nu' | path exists) {"
+                echo "    source /usr/share/aur-scan/integration.nu"
+                echo "}"
+                ;;
+            bash)
+                echo "if [[ -f /usr/share/aur-scan/integration.bash ]]; then"
+                echo "    source /usr/share/aur-scan/integration.bash"
+                echo "fi"
+                ;;
+        esac
     } >> "$USER_SHELL_CONFIG"
 
     log_ok "Shell-Integration aktiviert für $USER_SHELL ($USER_SHELL_CONFIG)"
